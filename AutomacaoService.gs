@@ -1,7 +1,6 @@
 /**
- * MÓDULO: AUTOMAÇÃO E SINCRONIZAÇÃO
+ * MÓDULO: AUTOMAÇÃO E SINCRONIZAÇÃO (Versão Suporte a Múltiplas Linhas por Sequencial)
  * Sincroniza dados da planilha principal externa para a aba ENTRADA local.
- * Executado automaticamente via gatilho de tempo (Daily Trigger).
  */
 function sincronizarPlanilhaPrincipal() {
   try {
@@ -9,105 +8,144 @@ function sincronizarPlanilhaPrincipal() {
     const abaEntradaLocal = ssLocal.getSheetByName("ENTRADA");
     if (!abaEntradaLocal) {
       Logger.log("Erro: Aba 'ENTRADA' local não encontrada.");
-      return;
+      return { sucesso: false, mensagem: "Aba 'ENTRADA' local não encontrada." };
     }
 
-    // 1. Abre a planilha principal externa usando o ID fornecido
     const idPlanilhaPrincipal = "1qrUFrqUnYvi51FoUfmAYdV2h6lOMh3fHM3-tjDz3Zyc";
     const ssPrincipal = SpreadsheetApp.openById(idPlanilhaPrincipal);
     const abaEntradaPrincipal = ssPrincipal.getSheetByName("ENTRADA");
-    
     if (!abaEntradaPrincipal) {
       Logger.log("Erro: Aba de origem na planilha principal externa não localizada.");
-      return;
+      return { sucesso: false, mensagem: "Aba de origem na planilha principal externa não localizada." };
     }
 
-    // 2. Coleta os dados da planilha principal (Origem)
     const dadosPrincipal = abaEntradaPrincipal.getDataRange().getValues();
     if (dadosPrincipal.length <= 2) {
-      Logger.log("Planilha principal sem registros novos para importar.");
-      return;
+      Logger.log("Planilha principal sem registros para sincronizar.");
+      return { sucesso: true, mensagem: "Planilha principal sem registros para sincronizar." };
     }
 
-    const idxColunaAG = 32; // Coluna AG na Origem é a 33ª coluna (índice 32)
+    const idxColunaAG = 32; // Coluna AG na Origem (índice 32)
     const sequenciaisCancelados = new Set();
 
-    // 🌟 PASSO A: Identifica todos os Sequenciais CANCELADOS na planilha externa
+    // 🌟 PASSO A: Identifica Sequenciais CANCELADOS na origem
     for (let p = 2; p < dadosPrincipal.length; p++) {
       const linha = dadosPrincipal[p];
       const seq = String(linha[0] || "").trim();
       const statusBaixa = String(linha[idxColunaAG] || "").trim().toLowerCase();
-
       if (seq && statusBaixa === "cancelado") {
         sequenciaisCancelados.add(seq);
       }
     }
 
-    // 🌟 PASSO B: Exclui da planilha LOCAL os registros que foram cancelados na Origem
-    // Varre de baixo para cima para evitar desalinhamento de linhas durante a exclusão
+    // 🌟 PASSO B: Remove da planilha LOCAL os registros cancelados na origem
     let dadosLocais = abaEntradaLocal.getDataRange().getValues();
     let contadorExcluidos = 0;
-
     for (let i = dadosLocais.length - 1; i >= 2; i--) {
       const seqLocal = String(dadosLocais[i][0] || "").trim();
       if (seqLocal && sequenciaisCancelados.has(seqLocal)) {
-        abaEntradaLocal.deleteRow(i + 1); // +1 pois deleteRow usa índice de linha da planilha (inicia em 1)
+        abaEntradaLocal.deleteRow(i + 1);
         contadorExcluidos++;
       }
     }
 
-    // 🌟 PASSO C: Mapeia os Sequenciais que PERMANECERAM na aba ENTRADA local
-    dadosLocais = abaEntradaLocal.getDataRange().getValues(); // Recarrega os dados atualizados pós-exclusão
-    const sequenciaisExistentes = {};
+    // 🌟 PASSO C: Mapeia as OCORRÊNCIAS existentes na planilha local (ex: "2026000438_1", "2026000438_2")
+    dadosLocais = abaEntradaLocal.getDataRange().getValues();
+    const ocorrenciasLocais = {}; // sequencial -> contador
+    const mapaLocaisChave = {};   // "sequencial_ocorrencia" -> { linhaPlanilha, dados }
+
     for (let i = 2; i < dadosLocais.length; i++) {
       const seq = String(dadosLocais[i][0] || "").trim();
       if (seq) {
-        sequenciaisExistentes[seq] = true;
+        ocorrenciasLocais[seq] = (ocorrenciasLocais[seq] || 0) + 1;
+        const chaveComposta = seq + "_" + ocorrenciasLocais[seq];
+        mapaLocaisChave[chaveComposta] = {
+          linhaPlanilha: i + 1,
+          dados: dadosLocais[i]
+        };
       }
     }
 
-    // Determina o tamanho horizontal fixo baseado no cabeçalho local
-    const totalColunasLocal = abaEntradaLocal.getLastColumn(); 
-    const colAG = 33; // Coluna 33 é a AG Local
-
+    const totalColunasLocal = abaEntradaLocal.getLastColumn() || 36;
+    const limiteColunasOrigem = 32; // Limite até Coluna AF (dados cadastrais)
     let contadorNovos = 0;
+    let contadorAtualizados = 0;
+    const novasLinhas = [];
 
-    // 🌟 PASSO D: Importa apenas os registros novos e que NÃO estejam cancelados
+    const ocorrenciasOrigem = {};
+
+    // 🌟 PASSO D: Processa a planilha externa usando Chave Composta de Ocorrência
     for (let p = 2; p < dadosPrincipal.length; p++) {
       const linhaPrincipal = dadosPrincipal[p];
       const seqPrincipal = String(linhaPrincipal[0] || "").trim();
-      const statusBaixa = String(linhaPrincipal[idxColunaAG] || "").trim().toLowerCase();
 
-      // Ignora registros sem sequencial, cancelados na origem ou que já existem localmente
-      if (!seqPrincipal || statusBaixa === "cancelado" || sequenciaisExistentes[seqPrincipal]) {
-        continue;
+      if (!seqPrincipal || sequenciaisCancelados.has(seqPrincipal)) continue;
+
+      // Incrementa a ocorrência do sequencial na origem
+      ocorrenciasOrigem[seqPrincipal] = (ocorrenciasOrigem[seqPrincipal] || 0) + 1;
+      const chaveComposta = seqPrincipal + "_" + ocorrenciasOrigem[seqPrincipal];
+
+      if (mapaLocaisChave[chaveComposta]) {
+        // A linha já existe localmente -> Verifica se houve alteração nos dados cadastrais
+        const infoLocal = mapaLocaisChave[chaveComposta];
+        const linhaLocalAtual = infoLocal.dados;
+        let houveAlteracao = false;
+
+        for (let c = 0; c < limiteColunasOrigem; c++) {
+          const valOrigem = (linhaPrincipal[c] instanceof Date) 
+            ? linhaPrincipal[c].getTime() 
+            : String(linhaPrincipal[c] === null || linhaPrincipal[c] === undefined ? "" : linhaPrincipal[c]).trim();
+
+          const valLocal = (linhaLocalAtual[c] instanceof Date) 
+            ? linhaLocalAtual[c].getTime() 
+            : String(linhaLocalAtual[c] === null || linhaLocalAtual[c] === undefined ? "" : linhaLocalAtual[c]).trim();
+
+          if (valOrigem !== valLocal) {
+            houveAlteracao = true;
+            linhaLocalAtual[c] = linhaPrincipal[c]; // Atualiza apenas o dado cadastral
+          }
+        }
+
+        // Regrava mantendo intactas as colunas de controle local (AG em diante)
+        if (houveAlteracao) {
+          abaEntradaLocal.getRange(infoLocal.linhaPlanilha, 1, 1, linhaLocalAtual.length).setValues([linhaLocalAtual]);
+          contadorAtualizados++;
+        }
+
+      } else {
+        // 🌟 NOVA OCORRÊNCIA (ex: 3ª linha do sequencial) -> Adiciona no final da planilha
+        let novaLinha = new Array(totalColunasLocal).fill("");
+
+        for (let c = 0; c < Math.min(linhaPrincipal.length, limiteColunasOrigem); c++) {
+          novaLinha[c] = linhaPrincipal[c] !== undefined ? linhaPrincipal[c] : "";
+        }
+
+        novaLinha[32] = "Pendente"; // Coluna AG (Status Inicial)
+        novasLinhas.push(novaLinha);
+        contadorNovos++;
       }
-
-      // Cria uma nova linha para injetar respeitando o tamanho local
-      let novaLinha = [];
-      
-      // Copia os dados originais respeitando o limite de colunas da planilha principal
-      for (let c = 0; c < totalColunasLocal; c++) {
-        novaLinha.push(linhaPrincipal[c] !== undefined ? linhaPrincipal[c] : "");
-      }
-
-      // Força a Coluna AG (Status do Fluxo Local) a ser "Pendente"
-      novaLinha[colAG - 1] = "Pendente";
-
-      // Garante que as colunas AH e AI entram vazias
-      novaLinha[colAG] = "";     // AH (Agente Tombador)
-      novaLinha[colAG + 1] = ""; // AI (Data Confirmação)
-
-      // Adiciona a linha no final da aba local
-      abaEntradaLocal.appendRow(novaLinha);
-      sequenciaisExistentes[seqPrincipal] = true; // Marca no mapa para evitar duplicatas do mesmo loop
-      contadorNovos++;
     }
 
-    Logger.log(`Sincronização concluída com sucesso! novos adicionados: ${contadorNovos} | registros cancelados removidos: ${contadorExcluidos}.`);
+    // Insere todas as novas linhas no final da aba local
+    if (novasLinhas.length > 0) {
+      const proximaLinha = abaEntradaLocal.getLastRow() + 1;
+      abaEntradaLocal.getRange(proximaLinha, 1, novasLinhas.length, totalColunasLocal).setValues(novasLinhas);
+    }
+
+    const msgSucesso = `Sincronização concluída com sucesso!\n- Novos adicionados: ${contadorNovos}\n- Registros atualizados: ${contadorAtualizados}\n- Cancelados removidos: ${contadorExcluidos}`;
+    Logger.log(msgSucesso);
+
+    return {
+      sucesso: true,
+      mensagem: msgSucesso,
+      novos: contadorNovos,
+      atualizados: contadorAtualizados,
+      excluidos: contadorExcluidos
+    };
 
   } catch (error) {
     Logger.log("Erro crítico na sincronização automatizada: " + error.toString());
+    return { sucesso: false, mensagem: "Erro na sincronização: " + error.toString() };
   }
 }
 

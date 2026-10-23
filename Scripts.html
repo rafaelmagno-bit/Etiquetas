@@ -972,11 +972,10 @@ function atualizarBotoesRemover() {
 }
 
 /**
- * Envia todos os dados compartilhados + a lista de itens para o Backend
+ * Envia os dados do formulário de Entrada Manual para o Apps Script
  */
 function enviarEntradaManual() {
   const form = document.getElementById('formInclusaoManual');
-
   if (!form.checkValidity()) {
     form.reportValidity();
     return;
@@ -988,10 +987,9 @@ function enviarEntradaManual() {
     return;
   }
 
-  // Coleta a lista de itens do container
+  // Coleta os itens inseridos
   const blocos = document.querySelectorAll('.item-block');
   const listaItens = [];
-
   blocos.forEach(bloco => {
     listaItens.push({
       descricao: bloco.querySelector('.item-descricao').value.trim(),
@@ -1002,14 +1000,16 @@ function enviarEntradaManual() {
     });
   });
 
+  // 🌟 INCLUI O CAMPO CORRESPONSÁVEL NO PAYLOAD
   const payload = {
     sequencial: document.getElementById('manualSequencial').value.trim(),
     dataRegistro: document.getElementById('manualDataRegistro').value,
     tipo: document.getElementById('manualTipo').value,
     processo: document.getElementById('manualProcesso').value.trim(),
+    corresponsavel: document.getElementById('manualCorresponsavel').value.trim(), // 🌟 NOVO
     ug: codigoUg,
     uorg: document.getElementById('manualUorg').value,
-    itens: listaItens // Envia o array com todos os itens informados
+    itens: listaItens
   };
 
   document.getElementById('loaderTexto').innerText = `Salvando ${listaItens.length} item(ns)...`;
@@ -1034,12 +1034,13 @@ function enviarEntradaManual() {
 }
 
 /**
- * Reseta o formulário mantendo apenas 1 bloco de item limpo
+ * Reseta o formulário
  */
 function resetarFormularioManual() {
   document.getElementById('formInclusaoManual').reset();
   document.getElementById('manualUg').value = '';
   document.getElementById('manualUorg').value = '';
+  document.getElementById('manualCorresponsavel').value = ''; // 🌟 RESETA CORRESPONSÁVEL
   document.getElementById('buscaManualUorg').disabled = true;
   document.getElementById('containerItens').innerHTML = '';
   contadorItens = 0;
@@ -1332,20 +1333,67 @@ function carregarDashboardEtiquetas() {
   var tblRecentes = document.getElementById("tblEtiquetasRecentes");
   var cardsStatus = document.getElementById("cardsStatusTotais");
 
-  if (tblRecentes) tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center p-4"><div class="spinner-border text-primary spinner-border-sm"></div> Buscando lançamentos...</td></tr>';
-  grid.innerHTML = '<div class="col-12 text-center p-4"><div class="spinner-border text-secondary"></div><div class="small text-muted mt-2">Carregando painéis...</div></div>';
+  if (tblRecentes) {
+    tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center p-4"><div class="spinner-border text-primary spinner-border-sm"></div> Buscando lançamentos...</td></tr>';
+  }
+  if (cardsStatus) {
+    cardsStatus.innerHTML = '<div class="col-12 text-muted small p-2"><div class="spinner-border text-secondary spinner-border-sm me-2"></div>Carregando totais...</div>';
+  }
+  if (grid) {
+    grid.innerHTML = '<div class="col-12 text-center p-4"><div class="spinner-border text-secondary"></div><div class="small text-muted mt-2">Carregando painéis...</div></div>';
+  }
 
   google.script.run
     .withSuccessHandler(function(resposta) {
       if (!resposta || !resposta.sucesso) {
-        grid.innerHTML = '<div class="col-12 text-danger p-3">Erro ao carregar os dados.</div>';
+        if (tblRecentes) tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center text-danger p-3">Erro ao carregar dados.</td></tr>';
+        if (grid) grid.innerHTML = '<div class="col-12 text-danger p-3">Erro ao carregar quadros.</div>';
         return;
       }
 
+      // 🌟 1. POPULAR TABELA DE ENTRADAS RECENTES
+      if (tblRecentes) {
+        var htmlRecentes = "";
+        (resposta.recentes || []).forEach(function(item) {
+          htmlRecentes += `
+            <tr>
+              <td class="text-center fw-bold text-secondary">${item.sequencial}</td>
+              <td>${item.dataRegistro}</td>
+              <td><span class="badge bg-light text-dark border">${item.tipo}</span></td>
+              <td>${item.processo}</td>
+              <td class="text-center"><span class="badge bg-secondary">${item.ug}</span></td>
+              <td>${item.uorg}</td>
+              <td>${item.info}</td>
+              <td class="text-center fw-bold text-primary">${item.quantidade}</td>
+            </tr>`;
+        });
+        tblRecentes.innerHTML = htmlRecentes || '<tr><td colspan="8" class="text-center text-warning p-3">Nenhum registro nos últimos 3 dias.</td></tr>';
+      }
+
+      // 🌟 2. POPULAR CARDS DE TOTAL DE BENS POR STATUS
+      if (cardsStatus) {
+        var htmlStatus = "";
+        Object.keys(resposta.statusTotais || {}).forEach(function(key) {
+          htmlStatus += `
+            <div class="col-6 col-md-3">
+              <div class="card border-0 border-start border-4 border-primary shadow-sm bg-white p-3 py-2">
+                <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">${key}</small>
+                <h4 class="m-0 fw-bold text-dark">${resposta.statusTotais[key].toLocaleString('pt-BR')} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">bens</span></h4>
+              </div>
+            </div>`;
+        });
+        cardsStatus.innerHTML = htmlStatus || '<div class="col-12 text-muted small p-2">Nenhum status encontrado.</div>';
+      }
+
+      // 🌟 3. SALVAR EM CACHE E RENDERIZAR OS QUADROS (UG OU CORRESPONSÁVEL)
       window.cacheMundoEtiquetasPorUg = resposta.porUg || {};
       window.cacheMundoEtiquetasPorCorresponsavel = resposta.porCorresponsavel || {};
 
       renderizarTilesDashboard();
+    })
+    .withFailureHandler(function(err) {
+      if (tblRecentes) tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center text-danger p-3">Erro ao buscar lançamentos recentes.</td></tr>';
+      if (grid) grid.innerHTML = '<div class="col-12 text-danger p-3">Erro de comunicação com o servidor.</div>';
     })
     .obterDadosDashboardEtiquetas();
 }

@@ -135,52 +135,60 @@
       <div class="card-body p-4">
         <form id="formInclusaoManual" onsubmit="event.preventDefault(); enviarEntradaManual();">
           
-          <!-- SEÇÃO 1: DADOS GERAIS (COMPARTILHADOS POR TODOS OS ITENS) -->
-          <h6 class="fw-bold text-primary mb-3"><i class="bi bi-info-circle me-1"></i> Dados Gerais da Entrada</h6>
-          
-          <div class="row g-3 mb-3">
-            <div class="col-md-4">
-              <label class="form-label fw-bold small text-secondary">Sequencial (Termo do Livro) *</label>
-              <input type="text" id="manualSequencial" class="form-control form-control-sm" required placeholder="Ex: 1052">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-bold small text-secondary">Data do Registro *</label>
-              <input type="date" id="manualDataRegistro" class="form-control form-control-sm" required>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-bold small text-secondary">Tipo de Entrada *</label>
-              <select id="manualTipo" class="form-select form-select-sm" required>
-                <option value="">Selecione...</option>
-                <option value="Empenho">Empenho</option>
-                <option value="Edital Interno">Edital Interno</option>
-                <option value="FADE">FADE</option>
-                <option value="CNPQ">CNPQ</option>
-                <option value="FACEPE">FACEPE</option>
-                <option value="Doação">Doação</option>
-                <option value="Pré-existente">Pré-existente</option>
-                <option value="Outros Orgãos de Fomento">Outros Orgãos de Fomento</option>
-              </select>
-            </div>
-          </div>
+          <!-- SEÇÃO 1: DADOS GERAIS DA ENTRADA -->
+<h6 class="fw-bold text-primary mb-3"><i class="bi bi-info-circle me-1"></i> Dados Gerais da Entrada</h6>
 
-          <div class="row g-3 mb-4">
-            <div class="col-md-4">
-              <label class="form-label fw-bold small text-secondary">Nº do Processo *</label>
-              <input type="text" id="manualProcesso" class="form-control form-control-sm" required placeholder="Ex: 23076.XXXXXX/202X-XX">
-            </div>
-            <div class="col-md-4 position-relative">
-              <label class="form-label fw-bold small text-secondary">Unidade Gestora (UG) *</label>
-              <input type="text" id="buscaManualUg" class="form-control form-control-sm" required placeholder="Digite para buscar..." oninput="buscarManualUgDinamico(this.value)" autocomplete="off">
-              <input type="hidden" id="manualUg" required>
-              <div id="resBuscaManualUg" class="position-absolute w-100 shadow rounded bg-white mt-1" style="z-index: 1050; max-height: 200px; overflow-y: auto;"></div>
-            </div>
-            <div class="col-md-4 position-relative">
-              <label class="form-label fw-bold small text-secondary">UORG (Setor/Unidade)</label>
-              <input type="text" id="buscaManualUorg" class="form-control form-control-sm" placeholder="Selecione primeiro a UG..." oninput="buscarManualUorgDinamico(this.value)" autocomplete="off" disabled>
-              <input type="hidden" id="manualUorg">
-              <div id="resBuscaManualUorg" class="position-absolute w-100 shadow rounded bg-white mt-1" style="z-index: 1050; max-height: 200px; overflow-y: auto;"></div>
-            </div>
-          </div>
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <label class="form-label fw-bold small text-secondary">Sequencial (Termo do Livro) *</label>
+    <input type="text" id="manualSequencial" class="form-control form-control-sm" required placeholder="Ex: 1052">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label fw-bold small text-secondary">Data do Registro *</label>
+    <input type="date" id="manualDataRegistro" class="form-control form-control-sm" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label fw-bold small text-secondary">Tipo de Entrada *</label>
+    <select id="manualTipo" class="form-select form-select-sm" required>
+      <option value="">Selecione...</option>
+      <option value="Empenho">Empenho</option>
+      <option value="Edital Interno">Edital Interno</option>
+      <option value="FADE">FADE</option>
+      <option value="CNPQ">CNPQ</option>
+      <option value="FACEPE">FACEPE</option>
+      <option value="Doação">Doação</option>
+      <option value="Pré-existente">Pré-existente</option>
+      <option value="Outros Orgãos de Fomento">Outros Orgãos de Fomento</option>
+    </select>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <label class="form-label fw-bold small text-secondary">Nº do Processo *</label>
+    <input type="text" id="manualProcesso" class="form-control form-control-sm" required placeholder="Ex: 23076.XXXXXX/202X-XX">
+  </div>
+
+  <!-- 🌟 NOVO CAMPO: CORRESPONSÁVEL -->
+  <div class="col-md-3">
+    <label class="form-label fw-bold small text-secondary">Corresponsável</label>
+    <input type="text" id="manualCorresponsavel" class="form-control form-control-sm" placeholder="Ex: NOME DO CORRESPONSÁVEL">
+  </div>
+
+  <div class="col-md-3 position-relative">
+    <label class="form-label fw-bold small text-secondary">Unidade Gestora (UG) *</label>
+    <input type="text" id="buscaManualUg" class="form-control form-control-sm" required placeholder="Digite para buscar..." oninput="buscarManualUgDinamico(this.value)" autocomplete="off">
+    <input type="hidden" id="manualUg" required>
+    <div id="resBuscaManualUg" class="position-absolute w-100 shadow rounded bg-white mt-1" style="z-index: 1050; max-height: 200px; overflow-y: auto;"></div>
+  </div>
+
+  <div class="col-md-3 position-relative">
+    <label class="form-label fw-bold small text-secondary">UORG (Setor/Unidade)</label>
+    <input type="text" id="buscaManualUorg" class="form-control form-control-sm" placeholder="Selecione primeiro a UG..." oninput="buscarManualUorgDinamico(this.value)" autocomplete="off" disabled>
+    <input type="hidden" id="manualUorg">
+    <div id="resBuscaManualUorg" class="position-absolute w-100 shadow rounded bg-white mt-1" style="z-index: 1050; max-height: 200px; overflow-y: auto;"></div>
+  </div>
+</div>
 
           <hr class="my-4">
 

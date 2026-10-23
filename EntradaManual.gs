@@ -51,6 +51,7 @@ function salvarEntradaManual(dados) {
       novaLinha[5]  = dados.processo || "";          // Coluna F  (6)  - Processo
       novaLinha[6]  = dados.ug || "";                // Coluna G  (7)  - UG
       novaLinha[7]  = dados.uorg || "";              // Coluna H  (8)  - UORG
+      novalinha[15] = (dados.corresponsavel || "").toUpperCase().trim();
 
       // Dados específicos deste item
       novaLinha[24] = item.descricao || "";         // Coluna Y  (25) - Descrição Completa
