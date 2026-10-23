@@ -1,0 +1,1329 @@
+<script>
+  var modalPrincipalInstancia, modalTombadorInstancia;
+  window.cacheMundoEtiquetasPorUg = {};
+  
+  // Variável global para reter os dados salvos na última atualização
+  var dadosNaoLocalizadosCache = [];
+
+  function mostrarLoader(texto) { document.getElementById("loaderTexto").innerText = texto || "Processando..."; document.getElementById("loaderOverlay").style.display = "flex"; }
+  function esconderLoader() { document.getElementById("loaderOverlay").style.display = "none"; }
+  
+  // Substitua a função navegarAba existente por esta versão atualizada:
+  function navegarAba(idAba) { 
+    // 1. Remove o estado ativo de todas as abas e botões do menu (Código original)
+    document.querySelectorAll('.aba-modulo').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-link-modulo').forEach(l => l.classList.remove('active')); 
+    
+    // 2. Ativa a aba que foi solicitada
+    const elementoAba = document.getElementById(idAba);
+    if (elementoAba) elementoAba.classList.add('active'); 
+    
+    // 3. Ativa visualmente o botão do menu que foi clicado (Código original adaptado)
+    if (typeof event !== 'undefined' && event && event.currentTarget) {
+      event.currentTarget.classList.add('active'); 
+    }
+    
+    // 4. Gatilhos automáticos de atualização de dados baseados na aba escolhida
+    if (idAba === 'abaDashboard') {
+      carregarDashboardEtiquetas(); 
+    } else if (idAba === 'abaGestorTombadores') {
+      carregarPainelGestorTombadores(); // Nova função do painel do gestor
+    }
+  }
+
+  function carregarDashboardEtiquetas() {
+    var gridUg = document.getElementById("gridUgTiles");
+    var tblRecentes = document.getElementById("tblEtiquetasRecentes");
+    var cardsStatus = document.getElementById("cardsStatusTotais");
+    tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center p-4"><div class="spinner-border text-primary spinner-border-sm"></div> Buscando lançamentos...</td></tr>';
+    gridUg.innerHTML = '<div class="col-12 text-center p-3"><div class="spinner-border text-secondary"></div></div>';
+    
+    google.script.run
+      .withSuccessHandler(function(resposta) {
+        if (!resposta || !resposta.sucesso) { alert("Erro ao carregar dados."); return; }
+        window.cacheMundoEtiquetasPorUg = resposta.porUg || {};
+        
+        var htmlRecentes = "";
+        (resposta.recentes || []).forEach(function(item) {
+          htmlRecentes += `<tr><td class="text-center fw-bold text-secondary">${item.sequencial}</td><td>${item.dataRegistro}</td><td><span class="badge bg-light text-dark border">${item.tipo}</span></td><td>${item.processo}</td><td class="text-center"><span class="badge bg-secondary">${item.ug}</span></td><td>${item.uorg}</td><td>${item.info}</td><td class="text-center fw-bold text-primary">${item.quantidade}</td></tr>`;
+        });
+        tblRecentes.innerHTML = htmlRecentes || '<tr><td colspan="8" class="text-center text-warning p-3">Nenhum registro.</td></tr>';
+
+        var htmlStatus = "";
+        Object.keys(resposta.statusTotais || {}).forEach(function(key) {
+          htmlStatus += `<div class="col-6 col-md-3"><div class="card border-0 border-start border-4 border-primary shadow-sm bg-white p-3 py-2"><small class="text-muted fw-bold text-uppercase" style="font-size:10px;">${key}</small><h4 class="m-0 fw-bold text-dark">${resposta.statusTotais[key].toLocaleString('pt-BR')} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">bens</span></h4></div></div>`;
+        });
+        cardsStatus.innerHTML = htmlStatus;
+
+        var htmlTiles = "";
+        Object.keys(window.cacheMundoEtiquetasPorUg).forEach(function(ugKey) {
+          var itemUg = window.cacheMundoEtiquetasPorUg[ugKey];
+          var corTile = itemUg.pendentes > 0 ? "bg-danger text-white" : (itemUg.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
+          htmlTiles += `<div class="col-12 col-sm-6 col-md-4 col-lg-3"><div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between" onclick="abrirDetalhamentoUg('${ugKey}')"><div class="tile-ug-title">${itemUg.ug}</div><div class="tile-counter"><div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;"><span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${itemUg.pendentes}</strong></div><div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;"><span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${itemUg.comTombador}</strong></div></div></div></div>`;
+        });
+        gridUg.innerHTML = htmlTiles;
+      }).obterDadosDashboardEtiquetas();
+  }
+
+  function abrirDetalhamentoUg(ugNome) {
+  var dadosUg = window.cacheMundoEtiquetasPorUg[ugNome];
+  if (!dadosUg) return;
+  document.getElementById("modalDetalheUgTitulo").innerHTML = `<i class="bi bi-building"></i> Detalhamento — Unidade ${dadosUg.ug}`;
+  
+  // 🌟 LOGICA DE AGRUPAMENTO (POR SEQUENCIAL + PROCESSO)
+  var mapaAgrupado = {};
+
+  (dadosUg.detalhes || []).forEach(function(det) {
+    // Chave única para combinação de Sequencial e Processo
+    var chave = String(det.sequencial || "").trim() + "___" + String(det.processo || "").toString().trim();
+
+    var qtdAtual = parseInt(det.quantidade, 10) || 0;
+
+    if (!mapaAgrupado[chave]) {
+      // Primeira ocorrência: cria a linha base
+      mapaAgrupado[chave] = {
+        sequencial: det.sequencial,
+        processo: det.processo,
+        uorg: det.uorg,
+        tipo: det.tipo,
+        info: det.info,
+        quantidade: qtdAtual,
+        status: det.status,
+        totalLinhas: 1
+      };
+    } else {
+      // Ocorrências subsequentes: soma a quantidade e incrementa a contagem de linhas
+      mapaAgrupado[chave].quantidade += qtdAtual;
+      mapaAgrupado[chave].totalLinhas += 1;
+    }
+  });
+
+  // Converte o mapa de volta para uma lista
+  var listaAgrupada = Object.values(mapaAgrupado);
+
+  // 🌟 RENDERIZAÇÃO DA TABELA REESTRUTURADA
+  var htmlCorpo = "";
+  listaAgrupada.forEach(function(det) {
+    var classeStatus = det.status.toLowerCase() === "pendente" ? "badge bg-danger" : "badge bg-warning text-dark";
+    var btnTombadorDesabilitado = det.status.toLowerCase() === "com tombador" ? "disabled" : "";
+
+    // Se houver mais de uma linha agrupada para o mesmo Sequencial e Processo, define como "Diversos"
+    var infoExibicao = det.totalLinhas > 1 
+      ? `<span class="badge bg-secondary"><i class="bi bi-layers me-1"></i>Diversos</span>` 
+      : det.info;
+
+    htmlCorpo += `
+      <tr>
+        <td class="text-center fw-bold text-muted">${det.sequencial}</td>
+        <td><strong>${det.processo}</strong></td>
+        <td class="fw-bold text-secondary">${det.uorg}</td>
+        <td>${det.tipo}</td>
+        <td>${infoExibicao}</td>
+        <td class="text-center text-primary fw-bold fs-6">${det.quantidade}</td>
+        <td class="text-center"><span class="${classeStatus}">${det.status}</span></td>
+        <td class="text-center">
+          <div class="btn-group gap-1">
+            <button class="btn btn-outline-danger btn-sm btn-acao-tbl" ${btnTombadorDesabilitado} onclick="abrirSubModalTombador('${det.sequencial}')" title="Destinar a Tombador"><i class="bi bi-person-plus"></i> Destinar</button>
+            <button class="btn btn-outline-primary btn-sm btn-acao-tbl" onclick="gerarRelatorioEntradaPDF('${det.sequencial}')" title="Gerar Comprovante PDF"><i class="bi bi-file-pdf"></i> PDF</button>
+            <button class="btn btn-outline-secondary btn-sm btn-acao-tbl" 
+            onclick="gerarEtiquetasPdf('${det.sequencial}')" 
+            title="Gerar Etiquetas">
+            <i class="bi bi-qr-code"></i> Etiquetas
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("tblDetalheUgCorpo").innerHTML = htmlCorpo || '<tr><td colspan="8" class="text-center p-4">Sem pendências.</td></tr>';
+  
+  modalPrincipalInstancia = new bootstrap.Modal(document.getElementById('modalDetalheUg'));
+  modalPrincipalInstancia.show();
+}
+
+  function abrirSubModalTombador(seq) {
+    document.getElementById("hdnSeqDestinar").value = seq;
+    
+    var selectAgente = document.getElementById("selTombadorAgente");
+    selectAgente.innerHTML = '<option value="">Carregando agentes...</option>';
+    
+    google.script.run
+      .withSuccessHandler(function(lista) {
+        if(lista.length === 0) {
+          selectAgente.innerHTML = '<option value="">Nenhum tombador cadastrado</option>';
+          return;
+        }
+        var htmlOpcoes = '<option value="">-- Escolha o Servidor --</option>';
+        lista.forEach(function(tombador) {
+          htmlOpcoes += `<option value="${tombador.nome}">${tombador.nome}</option>`;
+        });
+        selectAgente.innerHTML = htmlOpcoes;
+      })
+      .obterListaTombadores();
+
+    modalTombadorInstancia = new bootstrap.Modal(document.getElementById('modalEscolherTombador'));
+    modalTombadorInstancia.show();
+  }
+
+  function confirmarDestinacaoTombador() {
+    var seq = document.getElementById("hdnSeqDestinar").value;
+    var tombador = document.getElementById("selTombadorAgente").value;
+    if (!tombador) { alert("Por favor, selecione um agente patrimonial!"); return; }
+
+    modalTombadorInstancia.hide();
+    if(modalPrincipalInstancia) modalPrincipalInstancia.hide();
+
+    mostrarLoader("Salvando destinação do tombador no sistema...");
+    google.script.run
+      .withSuccessHandler(function(res) {
+        esconderLoader();
+        if (res.sucesso) {
+          alert(res.message);
+          carregarDashboardEtiquetas(); 
+        } else {
+          alert("Erro: " + res.message);
+        }
+      })
+      .withFailureHandler(function(err) { esconderLoader(); alert("Erro na rede: " + err.message); })
+      .destinarAotombador(seq, tombador);
+  }
+
+  function gerarRelatorioEntradaPDF(seq) {
+    mostrarLoader("⏳ Localizando registro e preparando PDF...");
+    google.script.run
+      .withSuccessHandler(res => {
+        esconderLoader();
+        if (!res.sucesso) { alert("O sequencial " + seq + " não foi localizado na base de dados local."); return; }
+        construirPDFEntradaFinal(res.dados);
+      })
+      .withFailureHandler(err => { esconderLoader(); alert("Erro no servidor: " + err.message); })
+      .getDadosRelatorioEntrada(seq);
+  }
+
+  function construirPDFEntradaFinal(dados) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const azulUFPE = [31, 78, 120];
+
+    doc.setFontSize(16); doc.setTextColor(azulUFPE[0], azulUFPE[1], azulUFPE[2]);
+    doc.text("COMPROVANTE DE ENTRADA E TOMBAMENTO", 105, 15, { align: "center" });
+    
+    doc.setFontSize(12); doc.text(`REGISTRO SEQUENCIAL: ${dados.sequencial}`, 105, 22, { align: "center" });
+
+    doc.setFontSize(10); doc.setTextColor(0); doc.setFont("helvetica", "bold");
+    doc.text("DADOS DO PROCESSO", 15, 34);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Processo: ${dados.processo} | Data Registro: ${dados.data} | Tipo: ${dados.tipo}`, 15, 39);
+    
+    const textoUg = dados.ugDescricao ? `${dados.ug} - ${dados.ugDescricao}` : dados.ug;
+    const textoUorg = dados.uorgDescricao ? `${dados.uorg} - ${dados.uorgDescricao}` : dados.uorg;
+
+    doc.setFont("helvetica", "bold"); doc.text("UG Registro: ", 15, 49);
+    doc.setFont("helvetica", "normal"); doc.text(textoUg, 38, 49);
+
+    doc.setFont("helvetica", "bold"); doc.text("UORG Solicitante: ", 15, 54);
+    doc.setFont("helvetica", "normal"); doc.text(textoUorg, 46, 54);
+    
+    let proximaLinhaY = 59;
+    
+    if (dados.corresponsel && dados.corresponsel !== "") {
+      doc.setFont("helvetica", "bold"); doc.text("DADOS DO CO-RESPONSÁVEL", 15, proximaLinhaY + 4);
+      doc.setFont("helvetica", "normal"); doc.text(`Nome: ${dados.corresponsel}`, 15, proximaLinhaY + 9);
+      
+      // Linha de CPF e SIAPE removida
+      // Linha de E-mail/Telefone reposicionada para Y + 14:
+      doc.text(`E-mail: ${dados.emailCorresponsavel} | Telefone: ${dados.telefoneCorresponsavel}`, 15, proximaLinhaY + 14);
+      
+      // Espaçamento final ajustado de +24 para +19:
+      proximaLinhaY = proximaLinhaY + 19;
+    }
+    
+    doc.setDrawColor(azulUFPE[0], azulUFPE[1], azulUFPE[2]); doc.line(15, proximaLinhaY, 195, proximaLinhaY);
+
+    const colunas = ["Item", "Especificação do Material", "Qtd", "Valor Unit.", "Tombamento/Patrimônio"];
+    const corpo = dados.itens.map(it => [
+      it.ordem,
+      `${it.cadmat} - ${it.descricao}`,
+      it.qtd,
+      it.valorUnit.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'}),
+      it.tombamento || "Pendente"
+    ]);
+
+    doc.autoTable({
+      startY: proximaLinhaY + 5, head: [colunas], body: corpo,
+      headStyles: { fillColor: azulUFPE }, styles: { fontSize: 8 },
+      columnStyles: { 1: { cellWidth: 70 }, 4: { cellWidth: 40, fontStyle: 'bold' } }
+    });
+
+    doc.save(`Relatorio_Entrada_${dados.sequencial}.pdf`);
+}
+
+window.addEventListener('load', carregarDashboardEtiquetas);
+
+document.addEventListener('DOMContentLoaded', function() {
+    obterEmailUsuarioConectado();
+});
+
+  function obterEmailUsuarioConectado() {
+    google.script.run
+      .withSuccessHandler(function(email) {
+        if (email) {
+          document.getElementById("emailUsuarioLogado").innerText = email;
+        } else {
+          document.getElementById("emailUsuarioLogado").innerText = "Desconectado";
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error("Erro ao carregar usuário:", err);
+        document.getElementById("emailUsuarioLogado").innerText = "Erro";
+      })
+      .obterUsuarioLogado();
+  }
+
+  window.cachePainelGestorTombadores = [];
+
+  function carregarPainelGestorTombadores() {
+    mostrarLoader("Processando dados e cruzando planilhas...");
+    
+    google.script.run
+      .withSuccessHandler(function(resposta) {
+        esconderLoader();
+        if (!resposta || !resposta.sucesso) { 
+          alert("Erro ao processar painel gerencial: " + (resposta.message || "Erro desconhecido")); 
+          return; 
+        }
+        
+        window.cachePainelGestorTombadores = resposta.tombadores || [];
+        
+        // 1. Atualizar KPIs macros do Topo
+        document.getElementById("kpiAtivos").innerHTML = `${resposta.resumoGeral.totalComTombador} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">processos</span>`;
+        document.getElementById("kpiConcluidos").innerHTML = `${resposta.resumoGeral.totalConcluido} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">processos</span>`;
+        document.getElementById("kpiBensAlocados").innerHTML = `${resposta.resumoGeral.totalBensAlocados.toLocaleString('pt-BR')} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">itens</span>`;
+
+        // 2. Atualizar os status de vistoria e salvar a lista no cache global
+        if (resposta.resumoVisitasGlobal) {
+          document.getElementById("statusFixada").innerText = resposta.resumoVisitasGlobal.fixada.toLocaleString('pt-BR');
+          document.getElementById("statusEntregue").innerText = resposta.resumoVisitasGlobal.entregue.toLocaleString('pt-BR');
+          document.getElementById("statusNaoLocalizado").innerText = resposta.resumoVisitasGlobal.naoLocalizado.toLocaleString('pt-BR');
+          document.getElementById("statusNaoComporta").innerText = resposta.resumoVisitasGlobal.naoComporta.toLocaleString('pt-BR');
+          document.getElementById("statusAguardando").innerText = resposta.resumoVisitasGlobal.pendente.toLocaleString('pt-BR');
+          
+          dadosNaoLocalizadosCache = resposta.resumoVisitasGlobal.listaNaoLocalizados || [];
+        }
+        
+        let countGargalos = 0;
+        let htmlTabela = "";
+        
+        if (window.cachePainelGestorTombadores.length === 0) {
+          htmlTabela = '<tr><td colspan="6" class="text-center text-warning p-4">Nenhum registro com os status alvos encontrados.</td></tr>';
+        } else {
+          // 🌟 TRAVA DE SEGURANÇA: Soma exatamente as vistorias concluídas apontadas nos cards
+          const totalConcluidoGlobal = resposta.resumoVisitasGlobal 
+            ? ((resposta.resumoVisitasGlobal.fixada || 0) + 
+               (resposta.resumoVisitasGlobal.entregue || 0) + 
+               (resposta.resumoVisitasGlobal.naoLocalizado || 0) + 
+               (resposta.resumoVisitasGlobal.naoComporta || 0))
+            : 0;
+
+          window.cachePainelGestorTombadores.forEach(function(tombador, index) {
+            // Se o backend antigo enviar mais de 3 itens concluídos, forçamos a sincronização com o card
+            if (tombador.bensVistoriadosPonta > totalConcluidoGlobal) {
+              tombador.bensVistoriadosPonta = totalConcluidoGlobal;
+            }
+
+            let pctAvanco = 0;
+            if (tombador.totalBensCarga > 0) {
+              pctAvanco = Math.round((tombador.bensVistoriadosPonta / tombador.totalBensCarga) * 100);
+            }
+            
+            tombador.detalhesCarga.forEach(d => {
+              if (d.status === "Com Tombador" && d.diasEmPosse > 15) countGargalos++;
+            });
+
+            let corBarra = "bg-danger";
+            if (pctAvanco >= 40 && pctAvanco < 80) corBarra = "bg-warning text-dark";
+            if (pctAvanco >= 80) corBarra = "bg-success";
+
+            htmlTabela += `
+              <tr>
+                <td><div class="fw-bold text-dark">${tombador.nome}</div></td>
+                <td class="text-center"><span class="badge bg-primary fs-6">${tombador.processosAtivos}</span></td>
+                <td class="text-center"><span class="badge bg-success fs-6">${tombador.processosConcluidos}</span></td>
+                <td class="text-center fw-bold text-secondary">${tombador.totalBensCarga.toLocaleString('pt-BR')}</td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="progress flex-grow-1" style="height: 18px; font-size: 11px; font-weight: bold;">
+                      <div class="progress-bar ${corBarra} progress-bar-striped progress-bar-animated" role="progressbar" style="width: ${pctAvanco}%;" aria-valuenow="${pctAvanco}" aria-valuemin="0" aria-valuemax="100">${pctAvanco}%</div>
+                    </div>
+                    <small class="text-muted fw-bold" style="min-width: 75px; text-align: right;">${tombador.bensVistoriadosPonta}/${tombador.totalBensCarga} itens</small>
+                  </div>
+                </td>
+                <td class="text-center">
+                  <button class="btn btn-outline-dark btn-sm fw-bold py-1 px-3" style="font-size:11.5px;" onclick="abrirModalDetalheCargaTombador(${index})"><i class="bi bi-search"></i> Detalhar Carga</button>
+                </td>
+              </tr>
+            `;
+          });
+        }
+        
+        document.getElementById("tblGestorTombadoresCorpo").innerHTML = htmlTabela;
+        document.getElementById("kpiGargalos").innerHTML = `${countGargalos} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">alertas</span>`;
+      })
+      .withFailureHandler(function(err) {
+        esconderLoader();
+        alert("Erro crítico de rede ao buscar painel: " + err.message);
+      })
+      .obterDadosPainelGestorTombadores();
+  }
+
+  function abrirModalDetalheCargaTombador(index) {
+  const tombador = window.cachePainelGestorTombadores[index];
+  if (!tombador) return;
+
+  document.getElementById("modalDetalheCargaTombadorTitulo").innerHTML = `<i class="bi bi-person-badge"></i> Carga de Trabalho Atualizada — <strong>${tombador.nome}</strong>`;
+  
+  let htmlCorpo = "";
+  tombador.detalhesCarga.forEach(function(det) {
+    let badgClass = det.status === "Com Tombador" ? "badge bg-warning text-dark" : "badge bg-success";
+    let alertaTempo = `${det.diasEmPosse} dias`;
+    
+    if (det.status === "Com Tombador" && det.diasEmPosse > 5) {
+      alertaTempo = `<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> ${det.diasEmPosse} dias (Atraso)</span>`;
+    } else if (det.status === "Concluido") {
+      alertaTempo = `<span class="text-muted"><i class="bi bi-check-circle"></i> Finalizado</span>`;
+    }
+
+    var btnRedistribuir = det.status === "Concluido"
+      ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1 lh-1" style="font-size: 0.75rem;" disabled title="Processo concluído"><i class="bi bi-lock"></i></button>`
+      : `<button class="btn btn-outline-warning btn-sm py-0 px-2 lh-1 fw-bold text-dark" style="font-size: 0.75rem;" onclick="abrirModalRedistribuir('${det.sequencial}')" title="Redistribuir para outro tombador">
+           <i class="bi bi-arrow-left-right me-1"></i>Redistribuir
+         </button>`;
+
+    var descricaoTexto = det.descricao || '<span class="text-muted italic">-</span>';
+
+    htmlCorpo += `
+      <tr>
+        <td class="text-center fw-bold text-secondary align-middle">${det.sequencial}</td>
+        <td class="fw-bold align-middle text-nowrap" style="font-size: 11px;">${det.processo}</td> <!-- 🌟 FONTE REDUZIDA + NO-WRAP -->
+        <td class="align-middle">${det.uorg}</td>
+        <td class="align-middle">${descricaoTexto}</td>
+        <td class="text-center align-middle">${det.dataEnvio}</td>
+        <td class="text-center align-middle">${alertaTempo}</td>
+        <td class="text-center fw-bold text-primary align-middle">${det.qtdBensProcesso}</td>
+        <td class="text-center bg-light align-middle"><span class="fw-bold text-success">${det.itensVistoriados}</span> / <span class="text-muted">${det.totalItensGerados}</span></td>
+        <td class="text-center align-middle"><span class="${badgClass}">${det.status}</span></td>
+        <td class="text-center align-middle">${btnRedistribuir}</td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("tblDetalheCargaTombadorCorpo").innerHTML = htmlCorpo || '<tr><td colspan="10" class="text-center p-3">Sem registros detalhados.</td></tr>';
+  const modalInstancia = new bootstrap.Modal(document.getElementById('modalDetalheCargaTombador'));
+  modalInstancia.show();
+}
+
+  /**
+   * Função chamada ao clicar no Card de "Não Localizado"
+   */
+  function abrirModalNaoLocalizados() {
+    const corpoTabela = document.getElementById("tblNaoLocalizadosCorpo");
+    corpoTabela.innerHTML = ""; 
+    
+    if (dadosNaoLocalizadosCache.length === 0) {
+      corpoTabela.innerHTML = `<tr><td colspan="3" class="text-center text-muted p-4">Nenhum item "Não Localizado" registrado ou painel desatualizado.</td></tr>`;
+    } else {
+      dadosNaoLocalizadosCache.forEach(function(item) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="text-center fw-bold text-secondary">${item.sequencial}</td>
+          <td class="text-center font-monospace bg-light">${item.tombo}</td>
+          <td>${item.descricao || '<span class="text-muted italic">Sem descrição</span>'}</td>
+        `;
+        corpoTabela.appendChild(tr);
+      });
+    }
+    
+    const meuModal = new bootstrap.Modal(document.getElementById('modalItensNaoLocalizados'));
+    meuModal.show();
+  }
+
+  /**
+ * Executa manualmente a rotina de atualização dos itens da demanda
+ */
+function executarSincronizacaoManual() {
+  // Aproveita o loader visual que você já tem estruturado
+  mostrarLoader("Buscando dados da ponta e atualizando ITENS_DEMANDA...");
+
+  google.script.run
+    .withSuccessHandler(function(resultado) {
+      esconderLoader();
+      
+      // Tratamento genérico caso sua função retorne um objeto de sucesso/erro
+      if (resultado && resultado.sucesso === false) {
+        alert("Aviso: " + (resultado.message || "Erro ao sincronizar."));
+        return;
+      }
+      
+      alert("✅ Sincronização realizada com sucesso!");
+      
+      // Recarrega o painel automaticamente para trazer os novos números atualizados
+      carregarPainelGestorTombadores();
+    })
+    .withFailureHandler(function(erro) {
+      esconderLoader();
+      alert("❌ Erro crítico de comunicação com o servidor: " + erro.message);
+    })
+    .atualizarItensDemanda(); // Chama a sua função existente no arquivo .gs
+}
+
+function gerarEtiquetasPdf(sequencial) {
+  mostrarLoader("Gerando PDF das etiquetas... Por favor, aguarde.");
+
+  google.script.run
+    .withSuccessHandler(function(urlPdf) {
+      esconderLoader();
+      if (urlPdf) {
+        // Abre o PDF diretamente na nova aba para impressão
+        window.open(urlPdf, '_blank');
+      } else {
+        alert("Nenhum bem encontrado para este sequencial para gerar etiquetas.");
+      }
+    })
+    .withFailureHandler(function(erro) {
+      esconderLoader();
+      alert("❌ Erro ao gerar etiquetas: " + erro.message);
+    })
+    .gerarEtiquetasServidor(sequencial);
+}
+
+// Variável global para armazenar temporariamente o resultado do relatório POLARE retornado
+var cacheRelatorioPolareAtual = null;
+
+function gerarRelatorioPolare() {
+  var dataInicio = document.getElementById("txtDataInicioPolare").value;
+  var dataFim = document.getElementById("txtDataFimPolare").value;
+
+  if (!dataInicio || !dataFim) {
+    alert("Por favor, selecione as datas Inicial e Final para a consulta.");
+    return;
+  }
+
+  mostrarLoader("Buscando atividades e consolidando indicadores para o POLARE...");
+
+  google.script.run
+    .withSuccessHandler(function(resposta) {
+      esconderLoader();
+
+      if (!resposta || !resposta.sucesso) {
+        alert("Erro ao buscar relatório: " + (resposta.mensagem || "Erro desconhecido"));
+        return;
+      }
+
+      cacheRelatorioPolareAtual = resposta;
+      exibirRelatorioPolareEmTela(resposta);
+    })
+    .withFailureHandler(function(erro) {
+      esconderLoader();
+      alert("Erro na requisição: " + erro.message);
+    })
+    .obterRelatorioProdutividadePolare(dataInicio, dataFim);
+}
+
+function exibirRelatorioPolareEmTela(dados) {
+  document.getElementById("painelResultadoPolare").style.display = "block";
+  document.getElementById("btnExportarPdfPolare").disabled = false;
+
+  // Atualizar KPIs
+  document.getElementById("polareKpiTotalVistorias").innerText = dados.resumo.totalVistorias.toLocaleString('pt-BR');
+  document.getElementById("polareKpiFixadas").innerText = dados.resumo.etiquetasFixadas.toLocaleString('pt-BR');
+  document.getElementById("polareKpiEntregues").innerText = dados.resumo.entreguesServidor.toLocaleString('pt-BR');
+  document.getElementById("polareKpiNaoLocalizados").innerText = dados.resumo.naoLocalizados.toLocaleString('pt-BR');
+  document.getElementById("polareKpiProcessos").innerText = dados.resumo.processosAtendidos.toLocaleString('pt-BR');
+
+  document.getElementById("lblPeriodoConsultado").innerText = `Período: ${dados.periodo.inicio} até ${dados.periodo.fim}`;
+
+  // Preencher tabela
+  var htmlTabela = "";
+  if (dados.detalhes.length === 0) {
+    htmlTabela = '<tr><td colspan="6" class="text-center text-warning p-4">Nenhuma atividade registrada para o seu usuário neste período.</td></tr>';
+  } else {
+    dados.detalhes.forEach(function(item) {
+      htmlTabela += `
+        <tr>
+          <td class="text-center fw-bold text-secondary">${item.data}</td>
+          <td><span class="badge bg-light text-dark border">${item.tipoAcao}</span></td>
+          <td class="fw-bold">${item.processo}</td>
+          <td class="text-center font-monospace">${item.tombo}</td>
+          <td>${item.descricao}</td>
+          <td class="text-center"><span class="badge bg-primary">${item.statusResultante}</span></td>
+        </tr>
+      `;
+    });
+  }
+
+  document.getElementById("tblPolareCorpo").innerHTML = htmlTabela;
+}
+
+function exportarRelatorioPolarePDF() {
+  if (!cacheRelatorioPolareAtual) {
+    alert("Nenhum relatório carregado para exportar.");
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const dados = cacheRelatorioPolareAtual;
+  const azulUFPE = [31, 78, 120];
+
+  // Cabeçalho Institucional
+  doc.setFontSize(14);
+  doc.setTextColor(azulUFPE[0], azulUFPE[1], azulUFPE[2]);
+  doc.text("UNIVERSIDADE FEDERAL DE PERNAMBUCO", 105, 15, { align: "center" });
+  doc.setFontSize(12);
+  doc.text("COMPROVANTE DE PRODUTIVIDADE INDIVIDUAL — POLARE / CBMAC", 105, 22, { align: "center" });
+
+  // Linha divisória
+  doc.setDrawColor(azulUFPE[0], azulUFPE[1], azulUFPE[2]);
+  doc.setLineWidth(0.5);
+  doc.line(15, 26, 195, 26);
+
+  // Metadados
+  doc.setFontSize(9);
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "bold");
+  doc.text(`Servidor / Agente: `, 15, 33);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${dados.servidor} (${dados.email})`, 48, 33);
+
+  doc.setFont("helvetica", "bold");
+  doc.text(`Período Avaliado: `, 15, 38);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${dados.periodo.inicio} a ${dados.periodo.fim}`, 48, 38);
+
+  doc.setFont("helvetica", "bold");
+  doc.text(`Emissão: `, 140, 38);
+  doc.setFont("helvetica", "normal");
+  doc.text(new Date().toLocaleDateString('pt-BR') + " " + new Date().toLocaleTimeString('pt-BR'), 158, 38);
+
+  // Resumo de Produtividade (Tabela Curta)
+  const colunasResumo = ["Métrica / Indicador", "Quantidade Realizada"];
+  const corpoResumo = [
+    ["Total de Vistorias de Campo Realizadas", dados.resumo.totalVistorias.toString()],
+    ["Destinação de Processos e Impressões", (dados.resumo.totalDestinacoes || 0).toString()], // 🌟 NOVA MÉTRICA
+    ["Etiquetas Fixadas em Bens", dados.resumo.etiquetasFixadas.toString()],
+    ["Etiquetas Entregues a Servidores Responsáveis", dados.resumo.entreguesServidor.toString()],
+    ["Bens Não Localizados na Vistoria", dados.resumo.naoLocalizados.toString()],
+    ["Bens que Não Comportam Plaqueta", dados.resumo.naoComporta.toString()],
+    ["Processos de Patrimônio Movimentados/Atendidos", dados.resumo.processosAtendidos.toString()]
+  ];
+
+  doc.autoTable({
+    startY: 44,
+    head: [colunasResumo],
+    body: corpoResumo,
+    headStyles: { fillColor: azulUFPE },
+    styles: { fontSize: 8 },
+    columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, fontStyle: 'bold', halign: 'center' } }
+  });
+
+  // Tabela de Histórico Detalhado
+  const proximoY = doc.lastAutoTable.finalY + 10;
+  doc.setFont("helvetica", "bold");
+  doc.text("DETALHAMENTO CRONOLÓGICO DAS AÇÕES REGISTRADAS NO SISTEMA", 15, proximoY);
+
+  const colunasDetalhes = ["Data/Hora", "Tipo Ação", "Sequencial", "Tombo", "Descrição", "Resultado"];
+  const corpoDetalhes = dados.detalhes.map(it => [
+    it.data,
+    it.tipoAcao,
+    it.processo,
+    it.tombo,
+    it.descricao,
+    it.statusResultante
+  ]);
+
+  doc.autoTable({
+    startY: proximoY + 4,
+    head: [colunasDetalhes],
+    body: corpoDetalhes,
+    headStyles: { fillColor: [80, 80, 80] },
+    styles: { fontSize: 7 },
+    columnStyles: {
+      0: { cellWidth: 25 },
+      1: { cellWidth: 35 },
+      2: { cellWidth: 30 },
+      3: { cellWidth: 20 },
+      4: { cellWidth: 45 },
+      5: { cellWidth: 25 }
+    }
+  });
+
+  // Salvar PDF
+  doc.save(`Comprovante_POLARE_${dados.servidor.replace(/\s+/g, '_')}.pdf`);
+}
+
+// ================= BUSCA DINÂMICA: UG ENTRADA MANUAL =================
+let timerBuscaUg = null;
+
+/**
+ * Função acionada ao digitar no campo de busca da UG
+ */
+function buscarManualUgDinamico(termo) {
+  clearTimeout(timerBuscaUg);
+  
+  const containerRes = document.getElementById('resBuscaManualUg');
+  const inputHidden = document.getElementById('manualUg');
+  const inputUorgVisivel = document.getElementById('buscaManualUorg');
+  const inputUorgHidden = document.getElementById('manualUorg');
+
+  // Limpa o valor do código e reseta a UORG caso o usuário altere a busca
+  inputHidden.value = '';
+  if (inputUorgVisivel) {
+    inputUorgVisivel.value = '';
+    inputUorgVisivel.disabled = true;
+  }
+  if (inputUorgHidden) inputUorgHidden.value = '';
+
+  if (!termo || termo.trim().length === 0) {
+    containerRes.innerHTML = '';
+    return;
+  }
+
+  // Debounce de 300ms para evitar requisições excessivas
+  timerBuscaUg = setTimeout(() => {
+    containerRes.innerHTML = `
+      <div class="p-2 text-muted small bg-white border rounded">
+        <span class="spinner-border spinner-border-sm text-primary me-1"></span> Buscando UG...
+      </div>`;
+
+    google.script.run
+      .withSuccessHandler(renderizarResultadosUg)
+      .withFailureHandler(err => {
+        console.error("Erro na busca de UG:", err);
+        containerRes.innerHTML = `<div class="p-2 text-danger small bg-white border rounded">Erro ao buscar UG.</div>`;
+      })
+      .buscarUgsNoBackend(termo);
+  }, 300);
+}
+
+/**
+ * Renderiza a lista de sugestões suspensa (Dropdown)
+ */
+function renderizarResultadosUg(lista) {
+  const containerRes = document.getElementById('resBuscaManualUg');
+  containerRes.innerHTML = '';
+
+  if (!lista || lista.length === 0) {
+    containerRes.innerHTML = `
+      <div class="p-2 text-muted small bg-white border rounded shadow-sm">
+        Nenhuma UG encontrada.
+      </div>`;
+    return;
+  }
+
+  const listGroup = document.createElement('div');
+  listGroup.className = 'list-group shadow-sm border rounded';
+
+  lista.forEach(ug => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'list-group-item list-group-item-action py-2 px-3 text-start';
+    btn.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center">
+        <strong class="text-primary" style="font-size: 13px;">${ug.codigo}</strong>
+        <span class="badge bg-secondary" style="font-size: 10px;">${ug.sigla}</span>
+      </div>
+      <small class="text-dark d-block text-truncate" style="font-size: 11px;">${ug.descricao}</small>
+    `;
+    
+    // Ao clicar, executa a seleção
+    btn.onclick = () => selecionarUg(ug);
+    listGroup.appendChild(btn);
+  });
+
+  containerRes.appendChild(listGroup);
+}
+
+/**
+ * Registra a UG selecionada salvando APENAS o Código no campo oculto
+ */
+function selecionarUg(ug) {
+  // 1. Salva APENAS O CÓDIGO no input hidden que vai para o banco de dados
+  document.getElementById('manualUg').value = ug.codigo;
+
+  // 2. Exibe o Código e a Sigla formatados no input visível para o usuário
+  document.getElementById('buscaManualUg').value = `${ug.codigo} — ${ug.sigla}`;
+
+  // 3. Limpa o menu suspenso de resultados
+  document.getElementById('resBuscaManualUg').innerHTML = '';
+
+  // 4. Habilita o campo de UORG (se existente) para a próxima etapa
+  const inputUorgVisivel = document.getElementById('buscaManualUorg');
+  if (inputUorgVisivel) {
+    inputUorgVisivel.disabled = false;
+    inputUorgVisivel.focus();
+  }
+}
+
+// ================= BUSCA DINÂMICA: UORG ENTRADA MANUAL =================
+let timerBuscaUorg = null;
+
+/**
+ * Função acionada ao digitar no campo de busca da UORG
+ */
+function buscarManualUorgDinamico(termo) {
+  clearTimeout(timerBuscaUorg);
+
+  const containerRes = document.getElementById('resBuscaManualUorg');
+  const inputHidden = document.getElementById('manualUorg');
+  const codigoUg = document.getElementById('manualUg').value; // Pega o código da UG previamente selecionada
+
+  // Limpa o valor oculto se o usuário estiver alterando o texto
+  inputHidden.value = '';
+
+  if (!termo || termo.trim().length === 0) {
+    containerRes.innerHTML = '';
+    return;
+  }
+
+  // Validação para garantir que o usuário escolheu a UG primeiro
+  if (!codigoUg) {
+    containerRes.innerHTML = `
+      <div class="p-2 text-warning small bg-white border rounded shadow-sm">
+        <i class="bi bi-exclamation-triangle me-1"></i> Por favor, selecione uma UG antes de buscar a UORG.
+      </div>`;
+    return;
+  }
+
+  // Debounce de 300ms
+  timerBuscaUorg = setTimeout(() => {
+    containerRes.innerHTML = `
+      <div class="p-2 text-muted small bg-white border rounded shadow-sm">
+        <span class="spinner-border spinner-border-sm text-primary me-1"></span> Buscando UORG...
+      </div>`;
+
+    google.script.run
+      .withSuccessHandler(renderizarResultadosUorg)
+      .withFailureHandler(err => {
+        console.error("Erro na busca de UORG:", err);
+        containerRes.innerHTML = `<div class="p-2 text-danger small bg-white border rounded">Erro ao buscar UORG.</div>`;
+      })
+      .buscarUorgsNoBackend(termo, codigoUg);
+  }, 300);
+}
+
+/**
+ * Renderiza o dropdown com as UORGs encontradas
+ */
+function renderizarResultadosUorg(lista) {
+  const containerRes = document.getElementById('resBuscaManualUorg');
+  containerRes.innerHTML = '';
+
+  if (!lista || lista.length === 0) {
+    containerRes.innerHTML = `
+      <div class="p-2 text-muted small bg-white border rounded shadow-sm">
+        Nenhuma UORG encontrada para a UG selecionada.
+      </div>`;
+    return;
+  }
+
+  const listGroup = document.createElement('div');
+  listGroup.className = 'list-group shadow-sm border rounded';
+
+  lista.forEach(item => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'list-group-item list-group-item-action py-2 px-3 text-start';
+    btn.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <strong class="text-primary" style="font-size: 12.5px;">UORG: ${item.uorg}</strong>
+        <span class="badge bg-light text-dark border" style="font-size: 10px;">SIPAC: ${item.sipac}</span>
+      </div>
+      <div class="text-dark fw-semibold text-truncate" style="font-size: 11.5px;">${item.descricao}</div>
+    `;
+
+    btn.onclick = () => selecionarUorg(item);
+    listGroup.appendChild(btn);
+  });
+
+  containerRes.appendChild(listGroup);
+}
+
+/**
+ * Registra a UORG selecionada e salva APENAS o Código UORG no campo oculto
+ */
+function selecionarUorg(item) {
+  // 1. Salva APENAS O CÓDIGO DA UORG no input hidden (manualUorg)
+  document.getElementById('manualUorg').value = item.uorg;
+
+  // 2. Exibe o Código UORG e a Descrição formatados no campo visível do usuário
+  document.getElementById('buscaManualUorg').value = `${item.uorg} — ${item.descricao}`;
+
+  // 3. Fecha o menu de opções
+  document.getElementById('resBuscaManualUorg').innerHTML = '';
+}
+
+// ================= CÁLCULO DE TOMBAMENTO DINÂMICO =================
+function calcularTombamentoFinal() {
+  const qtd = parseInt(document.getElementById("manualQuantidade").value) || 1;
+  const tomboIniStr = document.getElementById("manualTomboInicial").value.trim();
+  const containerFim = document.getElementById("containerTomboFinal");
+  const inputFim = document.getElementById("manualTomboFinal");
+  const lblTomboInicial = document.getElementById("lblTomboInicial");
+
+  if (qtd > 1) {
+    lblTomboInicial.innerText = "Tombamento Inicial *";
+    containerFim.style.display = "block";
+
+    const numIni = parseInt(tomboIniStr, 10);
+    if (!isNaN(numIni) && tomboIniStr !== "") {
+      const numFim = numIni + qtd - 1;
+      inputFim.value = String(numFim).padStart(tomboIniStr.length, '0');
+    } else {
+      inputFim.value = "";
+    }
+  } else {
+    lblTomboInicial.innerText = "Tombamento *";
+    containerFim.style.display = "none";
+    inputFim.value = "";
+  }
+}
+
+// ================= ENVIO DOS DADOS AO GOOGLE APPS SCRIPT =================
+
+/// Garante a variável no escopo global da janela
+window.contadorItens = 0;
+
+// Inicializa a página carregando o 1º item obrigatório
+document.addEventListener("DOMContentLoaded", function() {
+  const container = document.getElementById('containerItens');
+  if (container && container.children.length === 0) {
+    adicionarBlocoItem();
+  }
+});
+
+/**
+ * Adiciona um novo bloco de item dinamicamente
+ */
+function adicionarBlocoItem() {
+  // Garante que o contador existe antes de incrementar
+  if (typeof window.contadorItens === 'undefined') {
+    window.contadorItens = 0;
+  }
+  
+  window.contadorItens++;
+  const idItem = window.contadorItens;
+  const container = document.getElementById('containerItens');
+
+  if (!container) {
+    console.error("Container 'containerItens' não foi encontrado na página.");
+    return;
+  }
+
+  const card = document.createElement('div');
+  card.className = "card border mb-3 shadow-sm item-block";
+  card.id = `blocoItem_${idItem}`;
+
+  card.innerHTML = `
+    <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
+      <span class="fw-bold text-secondary small"><i class="bi bi-tag me-1"></i> Item #${container.children.length + 1}</span>
+      <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-item" onclick="removerBlocoItem(${idItem})" title="Remover Item">
+        <i class="bi bi-trash"></i> Excluir Item
+      </button>
+    </div>
+    <div class="card-body p-3">
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label class="form-label fw-bold small text-secondary">Descrição Completa do Bem *</label>
+          <input type="text" class="form-control form-control-sm item-descricao" required placeholder="Descrição detalhada do patrimônio...">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold small text-secondary">Marca / Fabricante</label>
+          <input type="text" class="form-control form-control-sm item-marca" placeholder="Ex: Dell, HP, Samsung">
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-12">
+          <label class="form-label fw-bold small text-secondary">Descrição para a Plaqueta (Coluna AJ) *</label>
+          <input type="text" class="form-control form-control-sm item-descricao-plaqueta" required placeholder="Texto resumido que será impresso na etiqueta...">
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label fw-bold small text-secondary">Quantidade *</label>
+          <input type="number" class="form-control form-control-sm item-quantidade" value="1" min="1" required>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-bold small text-secondary">Tombamento (Inicial se quantidade > 1) *</label>
+          <input type="text" class="form-control form-control-sm item-tombamento" required placeholder="Ex: 15872879">
+        </div>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(card);
+  atualizarBotoesRemover();
+}
+
+/**
+ * Remove um bloco de item
+ */
+function removerBlocoItem(idItem) {
+  const container = document.getElementById('containerItens');
+  if (container.children.length <= 1) {
+    alert("O registro deve possuir pelo menos 1 item.");
+    return;
+  }
+
+  const bloco = document.getElementById(`blocoItem_${idItem}`);
+  if (bloco) bloco.remove();
+
+  // Re-rotula os itens restantes (Item #1, Item #2, etc.)
+  Array.from(container.children).forEach((card, idx) => {
+    card.querySelector('.card-header span').innerHTML = `<i class="bi bi-tag me-1"></i> Item #${idx + 1}`;
+  });
+
+  atualizarBotoesRemover();
+}
+
+/**
+ * Mantém o botão de remover oculto caso haja apenas 1 item visível
+ */
+function atualizarBotoesRemover() {
+  const container = document.getElementById('containerItens');
+  if (!container) return;
+  
+  const botoes = container.querySelectorAll('.btn-remover-item');
+  botoes.forEach(btn => {
+    btn.style.display = container.children.length === 1 ? 'none' : 'inline-block';
+  });
+}
+
+/**
+ * Envia todos os dados compartilhados + a lista de itens para o Backend
+ */
+function enviarEntradaManual() {
+  const form = document.getElementById('formInclusaoManual');
+
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
+
+  const codigoUg = document.getElementById('manualUg').value;
+  if (!codigoUg) {
+    alert("Por favor, selecione uma Unidade Gestora (UG) válida na lista.");
+    return;
+  }
+
+  // Coleta a lista de itens do container
+  const blocos = document.querySelectorAll('.item-block');
+  const listaItens = [];
+
+  blocos.forEach(bloco => {
+    listaItens.push({
+      descricao: bloco.querySelector('.item-descricao').value.trim(),
+      marca: bloco.querySelector('.item-marca').value.trim(),
+      descricaoPlaqueta: bloco.querySelector('.item-descricao-plaqueta').value.trim(),
+      quantidade: bloco.querySelector('.item-quantidade').value,
+      tombamentoInicial: bloco.querySelector('.item-tombamento').value.trim()
+    });
+  });
+
+  const payload = {
+    sequencial: document.getElementById('manualSequencial').value.trim(),
+    dataRegistro: document.getElementById('manualDataRegistro').value,
+    tipo: document.getElementById('manualTipo').value,
+    processo: document.getElementById('manualProcesso').value.trim(),
+    ug: codigoUg,
+    uorg: document.getElementById('manualUorg').value,
+    itens: listaItens // Envia o array com todos os itens informados
+  };
+
+  document.getElementById('loaderTexto').innerText = `Salvando ${listaItens.length} item(ns)...`;
+  document.getElementById('loaderOverlay').style.display = "flex";
+
+  google.script.run
+    .withSuccessHandler(res => {
+      document.getElementById('loaderOverlay').style.display = "none";
+      if (res && res.sucesso) {
+        alert(res.mensagem);
+        resetarFormularioManual();
+      } else {
+        alert("Atenção: " + (res ? res.mensagem : "Erro desconhecido ao salvar."));
+      }
+    })
+    .withFailureHandler(err => {
+      document.getElementById('loaderOverlay').style.display = "none";
+      console.error("Erro ao salvar:", err);
+      alert("Erro ao salvar entrada manual: " + err.message);
+    })
+    .salvarEntradaManual(payload);
+}
+
+/**
+ * Reseta o formulário mantendo apenas 1 bloco de item limpo
+ */
+function resetarFormularioManual() {
+  document.getElementById('formInclusaoManual').reset();
+  document.getElementById('manualUg').value = '';
+  document.getElementById('manualUorg').value = '';
+  document.getElementById('buscaManualUorg').disabled = true;
+  document.getElementById('containerItens').innerHTML = '';
+  contadorItens = 0;
+  adicionarBlocoItem();
+}
+
+var sequencialEmRedistribuicao = null;
+
+/**
+ * Função responsável por renderizar a tabela dentro do #tblDetalheCargaTombadorCorpo
+ */
+function renderizarTabelaDetalheCarga(detalhesCarga) {
+  var html = "";
+  
+  (detalhesCarga || []).forEach(function(det) {
+    var statusClass = det.status === "Concluido" ? "badge bg-success" : "badge bg-warning text-dark";
+    var tempoEmPosse = det.diasEmPosse !== undefined ? det.diasEmPosse + " dia(s)" : "-";
+    
+    // Desabilita o botão caso o processo já esteja concluído
+    var btnRedistribuir = det.status === "Concluido"
+      ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2" disabled title="Processo concluído"><i class="bi bi-lock"></i></button>`
+      : `<button class="btn btn-outline-warning btn-sm py-0 px-2 fw-bold text-dark" onclick="abrirModalRedistribuir('${det.sequencial}')" title="Redistribuir para outro tombador">
+           <i class="bi bi-arrow-left-right me-1"></i>Redistribuir
+         </button>`;
+
+    html += `
+      <tr>
+        <td class="text-center fw-bold">${det.sequencial}</td>
+        <td><strong>${det.processo}</strong></td>
+        <td>${det.uorg}</td>
+        <td class="text-center">${det.dataEnvio}</td>
+        <td class="text-center">${tempoEmPosse}</td>
+        <td class="text-center fw-bold text-primary">${det.qtdBensProcesso}</td>
+        <td class="text-center">${det.itensVistoriados} / ${det.totalItensGerados}</td>
+        <td class="text-center"><span class="${statusClass}">${det.status}</span></td>
+        <td class="text-center">${btnRedistribuir}</td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("tblDetalheCargaTombadorCorpo").innerHTML = html || '<tr><td colspan="9" class="text-center p-3 text-muted">Nenhum item encontrado.</td></tr>';
+}
+
+/**
+ * Abre o modal para selecionar o novo tombador
+ */
+function abrirModalRedistribuir(sequencial) {
+  sequencialEmRedistribuicao = sequencial;
+  document.getElementById("txtRedistribuirSequencial").innerText = sequencial;
+  
+  var select = document.getElementById("selectNovoTombador");
+  select.innerHTML = '<option value="">Carregando...</option>';
+
+  // Abre o submodal (com z-index maior para sobrepor o modal principal)
+  var modalEl = document.getElementById("modalRedistribuirDemanda");
+  var modalInstancia = new bootstrap.Modal(modalEl);
+  modalInstancia.show();
+
+  // Busca lista de tombadores via Google Script Run
+  google.script.run
+    .withSuccessHandler(function(listaTombadores) {
+      select.innerHTML = '<option value="">-- Selecione o Tombador --</option>';
+      if (listaTombadores && listaTombadores.length > 0) {
+        listaTombadores.forEach(function(t) {
+          select.innerHTML += `<option value="${t.nome}">${t.nome}</option>`;
+        });
+      } else {
+        select.innerHTML = '<option value="">Nenhum tombador encontrado</option>';
+      }
+    })
+    .withFailureHandler(function(err) {
+      alert("Erro ao buscar tombadores: " + err.message);
+    })
+    .obterListaTombadores();
+}
+
+/**
+ * Salva a alteração nas colunas AH e AI da aba ENTRADA e reatualiza a interface
+ */
+function salvarRedistribuicao() {
+  var novoTombador = document.getElementById("selectNovoTombador").value;
+
+  if (!novoTombador) {
+    alert("Por favor, escolha um tombador.");
+    return;
+  }
+
+  if (!sequencialEmRedistribuicao) return;
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res.sucesso) {
+        alert(res.message);
+
+        // Oculta o modal de redistribuição
+        var modalRedist = bootstrap.Modal.getInstance(document.getElementById("modalRedistribuirDemanda"));
+        if (modalRedist) modalRedist.hide();
+
+        // Oculta o modal principal de carga para que o gestor veja o painel atualizado
+        var modalCarga = bootstrap.Modal.getInstance(document.getElementById("modalDetalheCargaTombador"));
+        if (modalCarga) modalCarga.hide();
+
+        // Recarrega o painel de tombadores
+        if (typeof carregarPainelGestorTombadores === "function") {
+          carregarPainelGestorTombadores();
+        }
+      } else {
+        alert("Atenção: " + res.message);
+      }
+    })
+    .withFailureHandler(function(err) {
+      alert("Erro ao realizar redistribuição: " + err.message);
+    })
+    .destinarAotombador(sequencialEmRedistribuicao, novoTombador);
+}
+
+function alternarFormularioRelatorio() {
+  var tipo = document.getElementById("selectTipoRelatorio").value;
+  
+  var painelFoto = document.getElementById("painelRelatorioFotografico");
+  var painelPolare = document.getElementById("painelRelatorioPolare");
+  
+  if (painelFoto) {
+    painelFoto.style.display = (tipo === "fotografico") ? "block" : "none";
+  }
+  
+  if (painelPolare) {
+    painelPolare.style.display = (tipo === "polare") ? "block" : "none";
+  }
+}
+
+
+function emitirRelatorioFotografico() {
+  var tipoFiltro = document.getElementById("relatorioTipoFiltro").value;
+  var valorFiltro = document.getElementById("relatorioValorFiltro").value;
+
+  if (!valorFiltro.trim()) {
+    alert("Por favor, preencha o valor da busca.");
+    return;
+  }
+
+  mostrarLoader("Consultando dados e processando imagens...");
+
+  google.script.run
+    .withSuccessHandler(function(resposta) {
+      esconderLoader();
+      if (!resposta || !resposta.sucesso) {
+        alert(resposta.message || "Erro ao consultar relatório.");
+        return;
+      }
+
+      // Chama a função de criação do PDF passando a lista obtida do banco
+      gerarPdfFotografico(resposta.dados);
+    })
+    .withFailureHandler(function(err) {
+      esconderLoader();
+      alert("Erro ao conectar ao servidor: " + err.message);
+    })
+    .obterDadosRelatorioFotografico(tipoFiltro, valorFiltro);
+}
+
+function gerarPdfFotografico(listaBens) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4'); // Retrato A4 (210mm x 297mm)
+
+  listaBens.forEach((item, index) => {
+    if (index > 0) doc.addPage();
+
+    // 1. Cabeçalho
+    doc.setFillColor(33, 37, 41); // Cor Dark
+    doc.rect(10, 10, 190, 12, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("UFPE — CBMAC | RELATÓRIO FOTOGRÁFICO DE PATRIMÔNIO", 105, 18, { align: "center" });
+
+    // 2. Tabela de Informações
+    doc.setDrawColor(200, 200, 200);
+    doc.setFillColor(245, 247, 250);
+    doc.rect(10, 26, 190, 42, 'FD');
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Sequencial:", 15, 34);
+    doc.setFont("helvetica", "normal");
+    doc.text(String(item.sequencial), 42, 34);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Nº do Processo:", 105, 34);
+    doc.setFont("helvetica", "normal");
+    doc.text(String(item.processo), 138, 34);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Nº Tombo:", 15, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(String(item.tombo), 42, 42);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Descrição:", 15, 50);
+    doc.setFont("helvetica", "normal");
+    
+    // Quebra texto da descrição se for longo
+    var linhasDesc = doc.splitTextToSize(String(item.descricao), 150);
+    doc.text(linhasDesc, 42, 50);
+
+    // 3. Imagem 1: Foto da Plaqueta
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("1. FOTO DA PLAQUETA / ETIQUETA", 15, 76);
+    
+    doc.rect(15, 80, 180, 95); // Moldura
+    if (item.fotoPlaquetaBase64) {
+      try {
+        doc.addImage(item.fotoPlaquetaBase64, 'JPEG', 16, 81, 178, 93, undefined, 'FAST');
+      } catch (e) {
+        doc.setFont("helvetica", "normal");
+        doc.text("Erro ao carregar imagem da plaqueta", 105, 125, { align: "center" });
+      }
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(150, 150, 150);
+      doc.text("Foto da Plaqueta não cadastrada", 105, 125, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // 4. Imagem 2: Foto do Bem
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("2. FOTO VISUAL DO BEM", 15, 186);
+
+    doc.rect(15, 190, 180, 95); // Moldura
+    if (item.fotoBemBase64) {
+      try {
+        doc.addImage(item.fotoBemBase64, 'JPEG', 16, 191, 178, 93, undefined, 'FAST');
+      } catch (e) {
+        doc.setFont("helvetica", "normal");
+        doc.text("Erro ao carregar imagem do bem", 105, 235, { align: "center" });
+      }
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(150, 150, 150);
+      doc.text("Foto do Bem não cadastrada", 105, 235, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // Rodapé da página
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Página ${index + 1} de ${listaBens.length}`, 195, 291, { align: "right" });
+  });
+
+  doc.save(`Relatorio_Fotografico_${Date.now()}.pdf`);
+}
+
+</script>

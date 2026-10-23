@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Módulo de Etiquetas - CBMAC</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  
+  <?!= include('Styles'); ?>
+</head>
+<body>
+
+  <div id="loaderOverlay">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+    <span class="mt-2 fw-bold text-dark" id="loaderTexto">Processando solicitação...</span>
+  </div>
+
+  <nav class="navbar navbar-expand-lg navbar-light navbar-cbmac sticky-top mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+        <div class="p-2 bg-primary text-white rounded d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+          <i class="bi bi-tag-fill fs-5"></i>
+        </div>
+        <div>
+          <span class="navbar-brand-title">CBMAC — UFPE</span>
+          <span class="navbar-brand-subtitle">Módulo de Fixação de Etiquetas</span>
+        </div>
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
+      <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+        <ul class="navbar-nav gap-1 align-items-center"> 
+          <li class="nav-item"><a class="nav-link nav-link-modulo active" onclick="navegarAba('abaDashboard')"><i class="bi bi-grid-1x2-fill me-1"></i> Painel de Controle</a></li>
+          <li class="nav-item">
+            <a class="nav-link nav-link-modulo" onclick="navegarAba('abaGestorTombadores')">
+              <i class="bi bi-person-workspace me-1"></i> Painel por Tombador
+            </a>
+          </li>
+          <li class="nav-item"><a class="nav-link nav-link-modulo" onclick="navegarAba('abaHistorico')"><i class="bi bi-journal-text me-1"></i> Relatórios</a></li>
+          
+          <li class="nav-item ms-lg-3 me-lg-2 mt-2 mt-lg-0 d-flex align-items-center text-secondary bg-light px-2 py-1 rounded border" style="font-size: 13px;">
+            <i class="bi bi-person-circle text-primary me-1"></i>
+            <span id="emailUsuarioLogado" class="fw-semibold text-truncate" style="max-width: 180px;">Carregando...</span>
+          </li>
+
+          <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
+            <a class="btn btn-outline-secondary btn-sm fw-bold px-3 d-flex align-items-center gap-1" 
+               href="https://script.google.com/a/macros/ufpe.br/s/AKfycbxIZ7sRYJmuoZv0xmd_amKnIaXpSBilSB_wQSDUlb9JCumF51G3TCY5NH1qOqWO_Ems/exec" 
+               target="_top">
+              <i class="bi bi-box-arrow-left"></i> Sistema Principal
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ABA DASHBOARD -->
+  <div id="abaDashboard" class="container-fluid px-4 aba-modulo active">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+      <div>
+        <h4 class="text-dark m-0 fw-bold">Controle de Fixação</h4>
+        <small class="text-muted">Acompanhamento e monitoramento de etiquetas nas UGs</small>
+      </div>
+      <!-- 🌟 BOTÃO REALOCADO AQUI: ENTRADA MANUAL E ATUALIZAR DADOS LADO A LADO -->
+      <div class="d-flex gap-2">
+        <button class="btn btn-success btn-sm fw-bold" onclick="navegarAba('abaInclusaoManual')">
+          <i class="bi bi-plus-square-fill me-1"></i> Entrada Manual
+        </button>
+        <button class="btn btn-primary btn-sm fw-bold" onclick="carregarDashboardEtiquetas()">
+          <i class="bi bi-arrow-clockwise"></i> Atualizar Dados
+        </button>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-header bg-dark text-white fw-bold d-flex align-items-center py-2" style="font-size: 14px;"><i class="bi bi-clock-history me-2"></i> Entradas Recentes (Últimos 3 Dias)</div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 220px;">
+          <table class="table table-striped table-hover align-middle mb-0" style="font-size: 13px;">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th class="text-center">Sequencial</th>
+                <th>Data Registro</th>
+                <th>Tipo Entrada</th>
+                <th>Processo</th>
+                <th class="text-center">UG</th>
+                <th>UORG</th>
+                <th>Informação Complementar</th>
+                <th class="text-center">Qtd. Bens</th>
+              </tr>
+            </thead>
+            <tbody id="tblEtiquetasRecentes"><tr><td colspan="8" class="text-center text-muted p-4">Carregando dados...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h6 class="text-secondary mb-3 fw-bold uppercase"><i class="bi bi-pie-chart-fill"></i> Total de Bens por Status</h6>
+    <div class="row g-3 mb-4" id="cardsStatusTotais"></div>
+
+    <h6 class="text-secondary mb-2 fw-bold"><i class="bi bi-grid-3x3-gap-fill"></i> Situação por Unidade Gestora (UG)</h6>
+    <p class="text-muted small mb-3">Selecione o painel da UG para detalhar pendências e executar ações.</p>
+    <div class="row g-3 pb-5" id="gridUgTiles"></div>
+  </div>
+
+  <!-- ABA: INCLUSÃO MANUAL DE ENTRADA -->
+  <div id="abaInclusaoManual" class="container-fluid px-4 aba-modulo">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+      <div>
+        <h4 class="text-dark m-0 fw-bold"><i class="bi bi-plus-square-fill text-primary me-2"></i>Inclusão Manual de Entrada</h4>
+        <small class="text-muted">Inclusão direta de demandas antigas no banco de dados do sistema</small>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-5">
+      <div class="card-header bg-dark text-white fw-bold py-2 d-flex align-items-center" style="font-size: 14px;">
+        <i class="bi bi-pencil-square me-2"></i> Formulário de Registro de Entrada
+      </div>
+      <div class="card-body p-4">
+        <form id="formInclusaoManual" onsubmit="event.preventDefault(); enviarEntradaManual();">
+          
+          <!-- SEÇÃO 1: DADOS GERAIS (COMPARTILHADOS POR TODOS OS ITENS) -->
+          <h6 class="fw-bold text-primary mb-3"><i class="bi bi-info-circle me-1"></i> Dados Gerais da Entrada</h6>
+          
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Sequencial (Termo do Livro) *</label>
+              <input type="text" id="manualSequencial" class="form-control form-control-sm" required placeholder="Ex: 1052">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Data do Registro *</label>
+              <input type="date" id="manualDataRegistro" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Tipo de Entrada *</label>
+              <select id="manualTipo" class="form-select form-select-sm" required>
+                <option value="">Selecione...</option>
+                <option value="Empenho">Empenho</option>
+                <option value="Edital Interno">Edital Interno</option>
+                <option value="FADE">FADE</option>
+                <option value="CNPQ">CNPQ</option>
+                <option value="FACEPE">FACEPE</option>
+                <option value="Doação">Doação</option>
+                <option value="Pré-existente">Pré-existente</option>
+                <option value="Outros Orgãos de Fomento">Outros Orgãos de Fomento</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Nº do Processo *</label>
+              <input type="text" id="manualProcesso" class="form-control form-control-sm" required placeholder="Ex: 23076.XXXXXX/202X-XX">
+            </div>
+            <div class="col-md-4 position-relative">
+              <label class="form-label fw-bold small text-secondary">Unidade Gestora (UG) *</label>
+              <input type="text" id="buscaManualUg" class="form-control form-control-sm" required placeholder="Digite para buscar..." oninput="buscarManualUgDinamico(this.value)" autocomplete="off">
+              <input type="hidden" id="manualUg" required>
+              <div id="resBuscaManualUg" class="position-absolute w-100 shadow rounded bg-white mt-1" style="z-index: 1050; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+            <div class="col-md-4 position-relative">
+              <label class="form-label fw-bold small text-secondary">UORG (Setor/Unidade)</label>
+              <input type="text" id="buscaManualUorg" class="form-control form-control-sm" placeholder="Selecione primeiro a UG..." oninput="buscarManualUorgDinamico(this.value)" autocomplete="off" disabled>
+              <input type="hidden" id="manualUorg">
+              <div id="resBuscaManualUorg" class="position-absolute w-100 shadow rounded bg-white mt-1" style="z-index: 1050; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- SEÇÃO 2: ITENS DA ENTRADA -->
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-bold text-primary m-0"><i class="bi bi-box-seam me-1"></i> Itens da Entrada</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm fw-bold" onclick="adicionarBlocoItem()">
+              <i class="bi bi-plus-lg me-1"></i> Adicionar Mais Um Item
+            </button>
+          </div>
+
+          <!-- Container dinâmico onde os itens serão inseridos -->
+          <div id="containerItens"></div>
+
+          <!-- AÇÕES -->
+          <div class="d-flex justify-content-end gap-2 border-top pt-3 mt-4">
+            <button type="reset" class="btn btn-outline-secondary btn-sm fw-bold px-3" onclick="resetarFormularioManual()">
+              <i class="bi bi-x-circle me-1"></i> Limpar Form
+            </button>
+            <button type="submit" class="btn btn-primary btn-sm fw-bold px-4" id="btnSalvarManual">
+              <i class="bi bi-check-circle me-1"></i> Salvar Registro Manual
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA HISTÓRICO -->
+  <!-- 🌟 ABA: CENTRAL DE RELATÓRIOS -->
+  <div id="abaHistorico" class="container-fluid px-4 aba-modulo">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+      <div>
+        <h4 class="text-dark m-0 fw-bold"><i class="bi bi-file-earmark-bar-graph-fill text-primary me-2"></i>Central de Relatórios</h4>
+        <small class="text-muted">Geração e extração de dados e relatórios gerenciais do sistema</small>
+      </div>
+    </div>
+
+    <!-- SELEÇÃO DO RELATÓRIO -->
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-body p-3 bg-light rounded">
+        <div class="row align-items-center g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold small text-secondary">Selecione o Relatório Desejado:</label>
+            <select id="selectTipoRelatorio" class="form-select form-select-sm" onchange="alternarFormularioRelatorio()">
+              <option value="fotografico" selected>📷 Relatório Fotográfico (PDF)</option>
+              <option value="polare">📊 Relatório Polare (Produtividade Individual)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. PAINEL DO RELATÓRIO FOTOGRÁFICO -->
+    <div id="painelRelatorioFotografico" class="card shadow-sm border-0 mb-5">
+      <div class="card-header bg-dark text-white fw-bold py-2 d-flex align-items-center" style="font-size: 14px;">
+        <i class="bi bi-camera me-2"></i> Filtros do Relatório Fotográfico
+      </div>
+      <div class="card-body p-4">
+        <form id="formRelatorioFotografico" onsubmit="event.preventDefault(); emitirRelatorioFotografico();">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Buscar Por *</label>
+              <select id="relatorioTipoFiltro" class="form-select form-select-sm" required>
+                <option value="sequencial">Sequencial (Termo/Livro)</option>
+                <option value="processo">Nº do Processo</option>
+                <option value="tombo">Nº do Tombo (Patrimônio)</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label fw-bold small text-secondary">Termo / Valor da Busca *</label>
+              <input type="text" id="relatorioValorFiltro" class="form-control form-control-sm" placeholder="Digite aqui o número..." required>
+            </div>
+            <div class="col-md-3">
+              <button type="submit" class="btn btn-primary btn-sm fw-bold w-100" id="btnGerarRelatorioFoto">
+                <i class="bi bi-file-earmark-pdf me-1"></i> Gerar PDF Fotográfico
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 2. PAINEL DO RELATÓRIO POLARE -->
+    <div id="painelRelatorioPolare" class="card shadow-sm border-0 mb-5" style="display: none;">
+      <div class="card-header bg-dark text-white fw-bold py-2 d-flex align-items-center" style="font-size: 14px;">
+        <i class="bi bi-bar-chart-line me-2"></i> Filtros do Relatório Polare (Produtividade Individual)
+      </div>
+      <div class="card-body p-4">
+        <form id="formRelatorioPolare" onsubmit="event.preventDefault(); gerarRelatorioPolare();">
+          <div class="row g-3 align-items-end mb-4">
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Data Inicial *</label>
+              <input type="date" id="txtDataInicioPolare" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-secondary">Data Final *</label>
+              <input type="date" id="txtDataFimPolare" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-4">
+              <button type="submit" class="btn btn-primary btn-sm fw-bold w-100">
+                <i class="bi bi-search me-1"></i> Consultar Produtividade
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- RESULTADO DA CONSULTA POLARE -->
+        <div id="painelResultadoPolare" style="display: none;">
+          <hr class="my-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h6 class="fw-bold m-0"><i class="bi bi-check2-square text-success me-1"></i> Resumo de Produtividade</h6>
+              <small id="lblPeriodoConsultado" class="text-muted"></small>
+            </div>
+            <button class="btn btn-outline-danger btn-sm fw-bold" id="btnExportarPdfPolare" onclick="exportarRelatorioPolarePDF()" disabled>
+              <i class="bi bi-file-earmark-pdf me-1"></i> Exportar Comprovante PDF
+            </button>
+          </div>
+
+          <!-- CARDS DE KPIS POLARE -->
+          <div class="row g-2 mb-4">
+            <div class="col-6 col-md-2">
+              <div class="p-2 border rounded bg-white text-center shadow-sm">
+                <small class="text-muted d-block fw-bold" style="font-size:10px;">VISTORIAS</small>
+                <span class="fs-5 fw-bold text-dark" id="polareKpiTotalVistorias">0</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="p-2 border rounded bg-white text-center shadow-sm">
+                <small class="text-muted d-block fw-bold" style="font-size:10px;">FIXADAS</small>
+                <span class="fs-5 fw-bold text-success" id="polareKpiFixadas">0</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="p-2 border rounded bg-white text-center shadow-sm">
+                <small class="text-muted d-block fw-bold" style="font-size:10px;">ENTREGUES</small>
+                <span class="fs-5 fw-bold text-info" id="polareKpiEntregues">0</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="p-2 border rounded bg-white text-center shadow-sm">
+                <small class="text-muted d-block fw-bold" style="font-size:10px;">NÃO LOCALIZADOS</small>
+                <span class="fs-5 fw-bold text-danger" id="polareKpiNaoLocalizados">0</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="p-2 border rounded bg-white text-center shadow-sm">
+                <small class="text-muted d-block fw-bold" style="font-size:10px;">PROCESSOS</small>
+                <span class="fs-5 fw-bold text-primary" id="polareKpiProcessos">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TABELA DE DETALHES POLARE -->
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle border" style="font-size: 12px;">
+              <thead class="table-dark">
+                <tr>
+                  <th class="text-center">Data/Hora</th>
+                  <th>Tipo de Ação</th>
+                  <th>Processo/Seq</th>
+                  <th class="text-center">Tombo</th>
+                  <th>Descrição</th>
+                  <th class="text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody id="tblPolareCorpo">
+                <!-- Preenchido via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DETALHE UG -->
+  <div class="modal fade" id="modalDetalheUg" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white py-2">
+          <h5 class="modal-title fw-bold fs-6" id="modalDetalheUgTitulo">Detalhamento</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <table class="table table-bordered table-striped table-hover align-middle mb-0" style="font-size: 12.5px;">
+            <thead class="table-dark sticky-top">
+              <tr>
+                <th class="text-center">Seq.</th>
+                <th>Processo</th>
+                <th>UORG</th>
+                <th>Tipo de Entrada</th>
+                <th>Informação Complementar</th>
+                <th class="text-center">Qtd. Itens</th>
+                <th class="text-center">Status</th>
+                <th class="text-center" style="width: 250px;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tblDetalheUgCorpo"></tbody>
+          </table>
+        </div>
+        <div class="modal-footer bg-light py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DESTINAR TOMBADOR -->
+  <div class="modal fade" id="modalEscolherTombador" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content border-danger shadow">
+        <div class="modal-header bg-danger text-white py-2">
+          <h6 class="modal-title fw-bold"><i class="bi bi-person-plus-fill"></i> Destinar a Tombador</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="hdnSeqDestinar">
+          <label class="form-label small fw-bold">Selecione o Agente Tombador:</label>
+          <select class="form-select form-select-sm" id="selTombadorAgente">
+            <option value="">Carregando agentes...</option>
+          </select>
+        </div>
+        <div class="modal-footer py-1 bg-light">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger btn-sm fw-bold" onclick="confirmarDestinacaoTombador()">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA: PAINEL DE GESTÃO POR TOMBADOR -->
+  <div id="abaGestorTombadores" class="container-fluid px-4 aba-modulo">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+      <div>
+        <h4 class="text-dark m-0 fw-bold">Gestão por Agente Tombador</h4>
+        <small class="text-muted">Visão gerencial de produtividade, gargalos e avanço físico das vistorias</small>
+      </div>
+      <button class="btn btn-outline-success btn-sm fw-bold" onclick="executarSincronizacaoManual()">
+        <i class="bi bi-cloud-arrow-down-fill"></i> Sincronizar Vistorias (Ponta)
+      </button>
+      <button class="btn btn-primary btn-sm fw-bold" onclick="carregarPainelGestorTombadores()">
+        <i class="bi bi-arrow-clockwise"></i> Atualizar Painel
+      </button>
+    </div>
+
+    <!-- CARDS DE MÉTRICAS GLOBAIS -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 border-start border-4 border-primary shadow-sm bg-white p-3 py-2">
+          <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Cargas Ativas ("Com Tombador")</small>
+          <h4 class="m-0 fw-bold text-dark" id="kpiAtivos">0 <span class="fs-6 text-muted fw-normal" style="font-size:12px;">processos</span></h4>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 border-start border-4 border-success shadow-sm bg-white p-3 py-2">
+          <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Total Concluídos</small>
+          <h4 class="m-0 fw-bold text-success" id="kpiConcluidos">0 <span class="fs-6 text-muted fw-normal" style="font-size:12px;">processos</span></h4>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 border-start border-4 border-info shadow-sm bg-white p-3 py-2">
+          <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Total de Patrimônios Alocados</small>
+          <h4 class="m-0 fw-bold text-dark" id="kpiBensAlocados">0 <span class="fs-6 text-muted fw-normal" style="font-size:12px;">itens</span></h4>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 border-start border-4 border-danger shadow-sm bg-white p-3 py-2">
+          <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Gargalos (> 15 dias em posse)</small>
+          <h4 class="m-0 fw-bold text-danger" id="kpiGargalos">0 <span class="fs-6 text-muted fw-normal" style="font-size:12px;">alertas</span></h4>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABELA DE PRODUTIVIDADE -->
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-header bg-dark text-white fw-bold d-flex align-items-center py-2" style="font-size: 14px;">
+        <i class="bi bi-people-fill me-2"></i> Rank de Carga de Trabalho e Produtividade Física (ITENS_DEMANDA)
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover align-middle mb-0" style="font-size: 13.5px;">
+            <thead class="table-light">
+              <tr>
+                <th>Agente Tombador</th>
+                <th class="text-center" style="width: 130px;">Processos Ativos</th>
+                <th class="text-center" style="width: 140px;">Processos Concluídos</th>
+                <th class="text-center" style="width: 150px;">Total de Bens sob Carga</th>
+                <th>Avanço Real das Vistorias na Ponta</th>
+                <th class="text-center" style="width: 150px;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tblGestorTombadoresCorpo">
+              <tr><td colspan="6" class="text-center text-muted p-4">Clique em "Atualizar Painel" para carregar...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAPEAMENTO DOS STATUS DE VISTORIA -->
+    <h6 class="text-secondary mb-3 fw-bold text-uppercase mt-4" style="font-size: 12px;">
+      <i class="bi bi-geo-fill"></i> Retorno das Visitas de Vistoria (Mapeamento de Campo — ITENS_DEMANDA)
+    </h6>
+    <div class="row g-3 pb-5">
+      <div class="col-6 col-md">
+        <div class="card border-0 border-top border-4 border-success shadow-sm bg-white p-3 text-center h-100">
+          <div class="p-2 bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2 mx-auto" style="width: 35px; height: 35px;">
+            <i class="bi bi-check-circle-fill"></i>
+          </div>
+          <small class="text-muted fw-bold d-block text-uppercase" style="font-size:10px;">Etiqueta Fixada</small>
+          <h4 class="m-0 fw-bold text-dark mt-1" id="statusFixada">0</h4>
+        </div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="card border-0 border-top border-4 border-info shadow-sm bg-white p-3 text-center h-100">
+          <div class="p-2 bg-info text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2 mx-auto" style="width: 35px; height: 35px;">
+            <i class="bi bi-person-check-fill"></i>
+          </div>
+          <small class="text-muted fw-bold d-block text-uppercase" style="font-size:10px;">Entregue à Servidor</small>
+          <h4 class="m-0 fw-bold text-dark mt-1" id="statusEntregue">0</h4>
+        </div>
+      </div>
+      <div class="col-6 col-md" onclick="abrirModalNaoLocalizados()" style="cursor: pointer;">
+        <div class="card border-0 border-top border-4 border-danger shadow-sm bg-white p-3 text-center h-100-hover position-relative" style="transition: transform 0.2s;">
+          <div class="p-2 bg-danger text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2 mx-auto" style="width: 35px; height: 35px;">
+            <i class="bi bi-x-circle-fill"></i>
+          </div>
+          <small class="text-muted fw-bold d-block text-uppercase" style="font-size:10px;">Não Localizado <i class="bi bi-search ms-1" style="font-size: 8px;"></i></small>
+          <h4 class="m-0 fw-bold text-dark mt-1" id="statusNaoLocalizado">0</h4>
+        </div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="card border-0 border-top border-4 border-secondary shadow-sm bg-white p-3 text-center h-100">
+          <div class="p-2 bg-secondary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2 mx-auto" style="width: 35px; height: 35px;">
+            <i class="bi bi-slash-circle-fill"></i>
+          </div>
+          <small class="text-muted fw-bold d-block text-uppercase" style="font-size:10px;">Não Comporta Plaqueta</small>
+          <h4 class="m-0 fw-bold text-dark mt-1" id="statusNaoComporta">0</h4>
+        </div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="card border-0 border-top border-4 border-warning shadow-sm bg-white p-3 text-center h-100">
+          <div class="p-2 bg-warning text-dark rounded-circle d-inline-flex align-items-center justify-content-center mb-2 mx-auto" style="width: 35px; height: 35px;">
+            <i class="bi bi-clock-fill"></i>
+          </div>
+          <small class="text-muted fw-bold d-block text-uppercase" style="font-size:10px;">Aguardando Vistoria</small>
+          <h4 class="m-0 fw-bold text-dark mt-1" id="statusAguardando">0</h4>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAIS AUXILIARES -->
+  <!-- MODAL DE DETALHAMENTO DA CARGA -->
+  <div class="modal fade" id="modalDetalheCargaTombador" tabindex="-1" aria-hidden="true" style="z-index: 1055;">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white py-2">
+          <h5 class="modal-title fw-bold fs-6" id="modalDetalheCargaTombadorTitulo">Carga Detalhada</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <table class="table table-bordered table-striped table-hover align-middle mb-0" style="font-size: 12.5px;">
+            <thead class="table-secondary sticky-top">
+              <tr>
+                <th class="text-center" style="width: 70px;">Seq.</th>
+                <th>Nº Processo</th>
+                <th>UORG Solicitante</th>
+                <th>Descrição do Bem</th>
+                <th class="text-center">Data Envio</th>
+                <th class="text-center">Tempo em Posse</th>
+                <th class="text-center">Qtd Bens Macro</th>
+                <th class="text-center">Vistoriados (Ponta)</th>
+                <th class="text-center">Status Macro</th>
+                <th class="text-center" style="width: 120px;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tblDetalheCargaTombadorCorpo"></tbody>
+          </table>
+        </div>
+        <div class="modal-footer bg-light py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL AUXILIAR DE REDISTRIBUIÇÃO DE DEMANDA -->
+  <div class="modal fade" id="modalRedistribuirDemanda" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning text-dark py-2">
+          <h5 class="modal-title fw-bold fs-6">
+            <i class="bi bi-arrow-left-right me-2"></i>Redistribuir Demanda
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3">Redistribuir o Sequencial: <strong id="txtRedistribuirSequencial" class="text-primary fs-6"></strong></p>
+          
+          <div class="mb-2">
+            <label for="selectNovoTombador" class="form-label fw-bold small">Selecione o Novo Tombador:</label>
+            <select id="selectNovoTombador" class="form-select form-select-sm">
+              <option value="">Carregando tombadores...</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer bg-light py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-warning btn-sm fw-bold" onclick="salvarRedistribuicao()">
+            <i class="bi bi-check-circle me-1"></i> Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalItensNaoLocalizados" tabindex="-1" aria-hidden="true" style="z-index: 1056;">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white py-2">
+          <h5 class="modal-title fw-bold fs-6"><i class="bi bi-exclamation-triangle-fill me-2"></i> Patrimônios Não Localizados na Vistoria</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <table class="table table-bordered table-striped table-hover align-middle mb-0" style="font-size: 12.5px;">
+            <thead class="table-dark sticky-top">
+              <tr>
+                <th class="text-center" style="width: 90px;">Sequencial</th>
+                <th class="text-center" style="width: 110px;">Nº Tombo</th>
+                <th>Descrição do Patrimônio</th>
+              </tr>
+            </thead>
+            <tbody id="tblNaoLocalizadosCorpo">
+              <tr><td colspan="3" class="text-center text-muted p-3">Nenhum item carregado.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-footer bg-light py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA: RELATÓRIO DE PRODUTIVIDADE POLARE -->
+  <div id="abaRelatorioPolare" class="container-fluid px-4 aba-modulo">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+      <div>
+        <h4 class="text-dark m-0 fw-bold"><i class="bi bi-file-earmark-person-fill text-primary"></i> Relatório de Produtividade Individual (POLARE)</h4>
+        <small class="text-muted">Comprovação oficial de atividades de vistoria e tombamento executadas no sistema</small>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4 bg-white">
+      <div class="card-body p-3">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-md-3">
+            <label class="form-label fw-bold small text-secondary">Data Inicial:</label>
+            <input type="date" id="txtDataInicioPolare" class="form-select form-select-sm">
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label fw-bold small text-secondary">Data Final:</label>
+            <input type="date" id="txtDataFimPolare" class="form-select form-select-sm">
+          </div>
+          <div class="col-12 col-md-6 d-flex gap-2">
+            <button class="btn btn-primary btn-sm fw-bold px-3" onclick="gerarRelatorioPolare()">
+              <i class="bi bi-search me-1"></i> Consultar Produtividade
+            </button>
+            <button class="btn btn-outline-danger btn-sm fw-bold px-3" id="btnExportarPdfPolare" onclick="exportarRelatorioPolarePDF()" disabled>
+              <i class="bi bi-file-pdf me-1"></i> Exportar Comprovante PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="painelResultadoPolare" style="display: none;">
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md">
+          <div class="card border-0 border-start border-4 border-primary shadow-sm bg-white p-3 py-2">
+            <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Total Vistorias</small>
+            <h4 class="m-0 fw-bold text-dark" id="polareKpiTotalVistorias">0</h4>
+          </div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="card border-0 border-start border-4 border-success shadow-sm bg-white p-3 py-2">
+            <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Etiquetas Fixadas</small>
+            <h4 class="m-0 fw-bold text-success" id="polareKpiFixadas">0</h4>
+          </div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="card border-0 border-start border-4 border-info shadow-sm bg-white p-3 py-2">
+            <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Entregues Servidor</small>
+            <h4 class="m-0 fw-bold text-info" id="polareKpiEntregues">0</h4>
+          </div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="card border-0 border-start border-4 border-danger shadow-sm bg-white p-3 py-2">
+            <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Não Localizados</small>
+            <h4 class="m-0 fw-bold text-danger" id="polareKpiNaoLocalizados">0</h4>
+          </div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="card border-0 border-start border-4 border-secondary shadow-sm bg-white p-3 py-2">
+            <small class="text-muted fw-bold text-uppercase" style="font-size:10px;">Processos Atendidos</small>
+            <h4 class="m-0 fw-bold text-dark" id="polareKpiProcessos">0</h4>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-5">
+        <div class="card-header bg-dark text-white fw-bold py-2 fs-6 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-list-check me-2"></i> Histórico Detalhado de Operações Executadas</span>
+          <span class="badge bg-light text-dark" id="lblPeriodoConsultado"></span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0" style="font-size: 13px;">
+              <thead class="table-light">
+                <tr>
+                  <th class="text-center" style="width: 140px;">Data / Hora</th>
+                  <th>Tipo de Ação</th>
+                  <th>Sequencial</th>
+                  <th class="text-center">Nº Tombo / Item</th>
+                  <th>Descrição do Patrimônio</th>
+                  <th class="text-center">Resultado</th>
+                </tr>
+              </thead>
+              <tbody id="tblPolareCorpo"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
+  <?!= include('Scripts'); ?>
+</body>
+</html>
