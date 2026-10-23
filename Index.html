@@ -99,22 +99,24 @@
     <h6 class="text-secondary mb-3 fw-bold uppercase"><i class="bi bi-pie-chart-fill"></i> Total de Bens por Status</h6>
     <div class="row g-3 mb-4" id="cardsStatusTotais"></div>
 
-    <!-- PAINÉIS DE SITUAÇÃO (UG E CORRESPONSÁVEL LADO A LADO) -->
-<div class="row g-4 pb-5">
-  <!-- COLUNA 1: SITUAÇÃO POR UG -->
-  <div class="col-12 col-xl-6">
-    <h6 class="text-secondary mb-2 fw-bold"><i class="bi bi-building-fill"></i> Situação por Unidade Gestora (UG)</h6>
-    <p class="text-muted small mb-3">Selecione o painel da UG para detalhar pendências e executar ações.</p>
-    <div class="row g-3" id="gridUgTiles"></div>
-  </div>
-
-  <!-- COLUNA 2: SITUAÇÃO POR CORRESPONSÁVEL -->
-  <div class="col-12 col-xl-6">
-    <h6 class="text-secondary mb-2 fw-bold"><i class="bi bi-people-fill"></i> Situação por Corresponsável</h6>
-    <p class="text-muted small mb-3">Selecione o painel do corresponsável para detalhar pendências e executar ações.</p>
-    <div class="row g-3" id="gridCorresponsavelTiles"></div>
+    <!-- NAVEGAÇÃO DE ALTERNÂNCIA DE VISÃO -->
+<div class="card bg-light border-0 shadow-sm p-2 mb-3">
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <button id="btnVisaoUg" class="btn btn-primary fw-bold active flex-fill text-start py-2 px-3 shadow-sm" onclick="alternarVisaoDashboard('ug')">
+      <i class="bi bi-building-fill me-2"></i> Situação por Unidade Gestora (UG)
+    </button>
+    <button id="btnVisaoCorresponsavel" class="btn btn-outline-secondary fw-bold flex-fill text-start py-2 px-3" onclick="alternarVisaoDashboard('corresponsavel')">
+      <i class="bi bi-people-fill me-2"></i> Situação por Corresponsável
+    </button>
   </div>
 </div>
+
+<p class="text-muted small mb-3" id="descricaoVisaoDashboard">
+  Selecione o painel da UG para detalhar pendências e executar ações.
+</p>
+
+<!-- CONTAINER ONDE OS CARDS SERÃO EXIBIDOS -->
+<div class="row g-3 pb-5" id="gridDashboardTiles"></div>
   </div>
 
   <!-- ABA: INCLUSÃO MANUAL DE ENTRADA -->

@@ -31,116 +31,9 @@
     }
   }
 
-  function carregarDashboardEtiquetas() {
-  var gridUg = document.getElementById("gridUgTiles");
-  var gridCorresponsavel = document.getElementById("gridCorresponsavelTiles");
+  
 
-  mostrarLoader("Carregando indicadores...");
 
-  google.script.run.withSuccessHandler(function(resposta) {
-    esconderLoader();
-    if (!resposta || !resposta.sucesso) { alert("Erro ao carregar dados."); return; }
-
-    window.cacheMundoEtiquetasPorUg = resposta.porUg || {};
-    window.cacheMundoEtiquetasPorCorresponsavel = resposta.porCorresponsavel || {}; // 🌟 Salva em cache
-
-    // RENDERIZAÇÃO DOS CARDS POR UG
-    var htmlTilesUg = "";
-    Object.keys(window.cacheMundoEtiquetasPorUg).forEach(function(ugKey) {
-      var itemUg = window.cacheMundoEtiquetasPorUg[ugKey];
-      var corTile = itemUg.pendentes > 0 ? "bg-danger text-white" : (itemUg.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
-      
-      htmlTilesUg += `
-        <div class="col-12 col-sm-6">
-          <div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between" style="cursor:pointer;" onclick="abrirDetalhamentoUg('${ugKey}')">
-            <div class="tile-ug-title">${itemUg.ug}</div>
-            <div class="tile-counter">
-              <div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;">
-                <span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${itemUg.pendentes}</strong>
-              </div>
-              <div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;">
-                <span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${itemUg.comTombador}</strong>
-              </div>
-            </div>
-          </div>
-        </div>`;
-    });
-    gridUg.innerHTML = htmlTilesUg || '<div class="col-12 text-muted small p-2">Nenhuma UG encontrada.</div>';
-
-    // 🌟 RENDERIZAÇÃO DOS CARDS POR CORRESPONSÁVEL
-    var htmlTilesCorresponsavel = "";
-    Object.keys(window.cacheMundoEtiquetasPorCorresponsavel).forEach(function(respKey) {
-      var itemResp = window.cacheMundoEtiquetasPorCorresponsavel[respKey];
-      var corTile = itemResp.pendentes > 0 ? "bg-danger text-white" : (itemResp.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
-      
-      htmlTilesCorresponsavel += `
-        <div class="col-12 col-sm-6">
-          <div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between" style="cursor:pointer;" onclick="abrirDetalhamentoCorresponsavel('${respKey}')">
-            <div class="tile-ug-title text-truncate" title="${itemResp.nome}">${itemResp.nome}</div>
-            <div class="tile-counter">
-              <div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;">
-                <span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${itemResp.pendentes}</strong>
-              </div>
-              <div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;">
-                <span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${itemResp.comTombador}</strong>
-              </div>
-            </div>
-          </div>
-        </div>`;
-    });
-    gridCorresponsavel.innerHTML = htmlTilesCorresponsavel || '<div class="col-12 text-muted small p-2">Nenhum corresponsável encontrado.</div>';
-
-  }).obterDadosDashboardEtiquetas();
-}
-
-// 🌟 FUNÇÃO PARA EXIBIR A MODAL DE DETALHES DO CORRESPONSÁVEL
-function abrirDetalhamentoCorresponsavel(corresponsavelNome) {
-  var dadosResp = window.cacheMundoEtiquetasPorCorresponsavel[corresponsavelNome];
-  if (!dadosResp) return;
-
-  document.getElementById("modalDetalheUgTitulo").innerHTML = `<i class="bi bi-person-fill"></i> Detalhamento — ${dadosResp.nome}`;
-
-  var mapaAgrupado = {};
-  (dadosResp.detalhes || []).forEach(function(det) {
-    var chave = det.sequencial + "_" + det.processo;
-    if (!mapaAgrupado[chave]) {
-      mapaAgrupado[chave] = { ...det };
-    } else {
-      mapaAgrupado[chave].quantidade += det.quantidade;
-    }
-  });
-
-  var listaAgrupada = Object.values(mapaAgrupado);
-  var htmlCorpo = "";
-
-  listaAgrupada.forEach(function(det) {
-    var classeStatus = det.status.toLowerCase() === "pendente" ? "badge bg-danger" : "badge bg-warning text-dark";
-    var btnTombadorDesabilitado = det.status.toLowerCase() === "com tombador" ? "disabled" : "";
-
-    htmlCorpo += `
-      <tr>
-        <td class="text-center fw-bold text-secondary">${det.sequencial}</td>
-        <td>${det.processo}</td>
-        <td class="fw-bold text-secondary">${det.ug} - ${det.uorg}</td>
-        <td>${det.tipo}</td>
-        <td>${det.info}</td>
-        <td class="text-center text-primary fw-bold fs-6">${det.quantidade}</td>
-        <td class="text-center"><span class="${classeStatus}">${det.status}</span></td>
-        <td class="text-center">
-          <div class="btn-group gap-1">
-            <button class="btn btn-outline-danger btn-sm btn-acao-tbl" ${btnTombadorDesabilitado} onclick="abrirSubModalTombador('${det.sequencial}')" title="Destinar a Tombador"><i class="bi bi-person-plus"></i> Destinar</button>
-            <button class="btn btn-outline-primary btn-sm btn-acao-tbl" onclick="gerarRelatorioEntradaPDF('${det.sequencial}')" title="Gerar Comprovante PDF"><i class="bi bi-file-pdf"></i> PDF</button>
-            <button class="btn btn-outline-secondary btn-sm btn-acao-tbl" onclick="gerarEtiquetasPdf('${det.sequencial}')" title="Gerar Etiquetas"><i class="bi bi-qr-code"></i> Etiquetas</button>
-          </div>
-        </td>
-      </tr>
-    `;
-  });
-
-  document.getElementById("tblDetalheUgCorpo").innerHTML = htmlCorpo || '<tr><td colspan="8" class="text-center p-4">Sem pendências.</td></tr>';
-  modalPrincipalInstancia = new bootstrap.Modal(document.getElementById('modalDetalheUg'));
-  modalPrincipalInstancia.show();
-}
 
   function abrirDetalhamentoUg(ugNome) {
   var dadosUg = window.cacheMundoEtiquetasPorUg[ugNome];
@@ -1401,6 +1294,177 @@ function gerarPdfFotografico(listaBens) {
   });
 
   doc.save(`Relatorio_Fotografico_${Date.now()}.pdf`);
+}
+
+// Variável global para controlar a visão selecionada ('ug' ou 'corresponsavel')
+window.visaoDashboardAtual = 'ug';
+window.cacheMundoEtiquetasPorUg = {};
+window.cacheMundoEtiquetasPorCorresponsavel = {};
+
+/**
+ * Alterna a visão do Painel entre UG e Corresponsável
+ */
+function alternarVisaoDashboard(tipo) {
+  window.visaoDashboardAtual = tipo;
+  
+  var btnUg = document.getElementById("btnVisaoUg");
+  var btnResp = document.getElementById("btnVisaoCorresponsavel");
+  var desc = document.getElementById("descricaoVisaoDashboard");
+
+  if (tipo === 'ug') {
+    btnUg.className = "btn btn-primary fw-bold active flex-fill text-start py-2 px-3 shadow-sm";
+    btnResp.className = "btn btn-outline-secondary fw-bold flex-fill text-start py-2 px-3";
+    desc.innerText = "Selecione o painel da UG para detalhar pendências e executar ações.";
+  } else {
+    btnUg.className = "btn btn-outline-secondary fw-bold flex-fill text-start py-2 px-3";
+    btnResp.className = "btn btn-primary fw-bold active flex-fill text-start py-2 px-3 shadow-sm";
+    desc.innerText = "Selecione o painel do corresponsável para detalhar pendências e executar ações.";
+  }
+
+  renderizarTilesDashboard();
+}
+
+/**
+ * Busca os dados do servidor e salva no cache
+ */
+function carregarDashboardEtiquetas() {
+  var grid = document.getElementById("gridDashboardTiles");
+  var tblRecentes = document.getElementById("tblEtiquetasRecentes");
+  var cardsStatus = document.getElementById("cardsStatusTotais");
+
+  if (tblRecentes) tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center p-4"><div class="spinner-border text-primary spinner-border-sm"></div> Buscando lançamentos...</td></tr>';
+  grid.innerHTML = '<div class="col-12 text-center p-4"><div class="spinner-border text-secondary"></div><div class="small text-muted mt-2">Carregando painéis...</div></div>';
+
+  google.script.run
+    .withSuccessHandler(function(resposta) {
+      if (!resposta || !resposta.sucesso) {
+        grid.innerHTML = '<div class="col-12 text-danger p-3">Erro ao carregar os dados.</div>';
+        return;
+      }
+
+      window.cacheMundoEtiquetasPorUg = resposta.porUg || {};
+      window.cacheMundoEtiquetasPorCorresponsavel = resposta.porCorresponsavel || {};
+
+      renderizarTilesDashboard();
+    })
+    .obterDadosDashboardEtiquetas();
+}
+
+/**
+ * Renderiza dinamicamente os quadros de acordo com a visão selecionada
+ */
+function renderizarTilesDashboard() {
+  var grid = document.getElementById("gridDashboardTiles");
+  var htmlTiles = "";
+
+  if (window.visaoDashboardAtual === 'ug') {
+    // 🏢 RENDERIZAÇÃO POR UNIDADE GESTORA (UG)
+    var chavesUg = Object.keys(window.cacheMundoEtiquetasPorUg);
+    if (chavesUg.length === 0) {
+      grid.innerHTML = '<div class="col-12 text-muted small p-3">Nenhuma UG encontrada.</div>';
+      return;
+    }
+
+    chavesUg.forEach(function(ugKey) {
+      var item = window.cacheMundoEtiquetasPorUg[ugKey];
+      var corTile = item.pendentes > 0 ? "bg-danger text-white" : (item.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
+
+      htmlTiles += `
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between h-100" style="cursor:pointer;" onclick="abrirDetalhamentoUg('${ugKey}')">
+            <div class="tile-ug-title">${item.ug}</div>
+            <div class="tile-counter mt-3">
+              <div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${item.pendentes}</strong>
+              </div>
+              <div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${item.comTombador}</strong>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+  } else {
+    // 👥 RENDERIZAÇÃO POR CORRESPONSÁVEL
+    var chavesResp = Object.keys(window.cacheMundoEtiquetasPorCorresponsavel);
+    if (chavesResp.length === 0) {
+      grid.innerHTML = '<div class="col-12 text-muted small p-3">Nenhum corresponsável encontrado.</div>';
+      return;
+    }
+
+    chavesResp.forEach(function(respKey) {
+      var item = window.cacheMundoEtiquetasPorCorresponsavel[respKey];
+      var corTile = item.pendentes > 0 ? "bg-danger text-white" : (item.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
+
+      htmlTiles += `
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between h-100" style="cursor:pointer;" onclick="abrirDetalhamentoCorresponsavel('${respKey}')">
+            <div class="tile-ug-title text-truncate" title="${item.nome}">${item.nome}</div>
+            <div class="tile-counter mt-3">
+              <div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${item.pendentes}</strong>
+              </div>
+              <div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${item.comTombador}</strong>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+  }
+
+  grid.innerHTML = htmlTiles;
+}
+
+/**
+ * Modal de Detalhamento para Corresponsável
+ */
+function abrirDetalhamentoCorresponsavel(corresponsavelNome) {
+  var dadosResp = window.cacheMundoEtiquetasPorCorresponsavel[corresponsavelNome];
+  if (!dadosResp) return;
+
+  document.getElementById("modalDetalheUgTitulo").innerHTML = `<i class="bi bi-person-fill me-2"></i> Detalhamento — ${dadosResp.nome}`;
+
+  var mapaAgrupado = {};
+  (dadosResp.detalhes || []).forEach(function(det) {
+    var chave = det.sequencial + "_" + det.processo;
+    if (!mapaAgrupado[chave]) {
+      mapaAgrupado[chave] = { ...det };
+    } else {
+      mapaAgrupado[chave].quantidade += det.quantidade;
+    }
+  });
+
+  var listaAgrupada = Object.values(mapaAgrupado);
+  var htmlCorpo = "";
+
+  listaAgrupada.forEach(function(det) {
+    var classeStatus = det.status.toLowerCase() === "pendente" ? "badge bg-danger" : "badge bg-warning text-dark";
+    var btnTombadorDesabilitado = det.status.toLowerCase() === "com tombador" ? "disabled" : "";
+
+    htmlCorpo += `
+      <tr>
+        <td class="text-center fw-bold text-secondary">${det.sequencial}</td>
+        <td>${det.processo}</td>
+        <td class="fw-bold text-secondary">${det.ug} - ${det.uorg}</td>
+        <td>${det.tipo}</td>
+        <td>${det.info}</td>
+        <td class="text-center text-primary fw-bold fs-6">${det.quantidade}</td>
+        <td class="text-center"><span class="${classeStatus}">${det.status}</span></td>
+        <td class="text-center">
+          <div class="btn-group gap-1">
+            <button class="btn btn-outline-danger btn-sm btn-acao-tbl" ${btnTombadorDesabilitado} onclick="abrirSubModalTombador('${det.sequencial}')" title="Destinar a Tombador"><i class="bi bi-person-plus"></i> Destinar</button>
+            <button class="btn btn-outline-primary btn-sm btn-acao-tbl" onclick="gerarRelatorioEntradaPDF('${det.sequencial}')" title="Gerar Comprovante PDF"><i class="bi bi-file-pdf"></i> PDF</button>
+            <button class="btn btn-outline-secondary btn-sm btn-acao-tbl" onclick="gerarEtiquetasPdf('${det.sequencial}')" title="Gerar Etiquetas"><i class="bi bi-qr-code"></i> Etiquetas</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("tblDetalheUgCorpo").innerHTML = htmlCorpo || '<tr><td colspan="8" class="text-center p-4">Sem pendências.</td></tr>';
+  modalPrincipalInstancia = new bootstrap.Modal(document.getElementById('modalDetalheUg'));
+  modalPrincipalInstancia.show();
 }
 
 </script>

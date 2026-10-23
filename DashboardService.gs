@@ -36,20 +36,27 @@ function obterDadosDashboardEtiquetas() {
 
     const dadosEntrada = abaEntrada.getDataRange().getValues();
     const porUg = {};
-    const porCorresponsavel = {}; // 🌟 NOVO: Objeto para agrupar por Corresponsável
+    const porCorresponsavel = {};
     const recentes = [];
     const statusTotais = {};
 
     const indiceStatus = 32; // Coluna AG
 
-    for (let i = 1; i < dadosEntrada.length; i++) {
+    // 🌟 INÍCIO EM i = 2 PARA IGNORAR O CABEÇALHO DA PLANILHA (LINHAS 1 E 2)
+    for (let i = 2; i < dadosEntrada.length; i++) {
       const r = dadosEntrada[i];
       const seq = String(r[0] || "").trim();
-      if (!seq) continue;
+
+      // Pula linhas vazias ou palavras de cabeçalho residuais
+      if (!seq || seq.toUpperCase() === "SEQUENCIAL" || seq.toUpperCase() === "SEQ") continue;
 
       const ugCodigo = String(r[6] || "").trim().toUpperCase();
       const uorgCodigo = String(r[7] || "").trim().toUpperCase();
-      const corresponsavelNome = String(r[15] || "SEM CORRESPONSÁVEL").trim().toUpperCase() || "SEM CORRESPONSÁVEL"; // 🌟 Coluna P
+      const corresponsavelNome = String(r[15] || "SEM CORRESPONSÁVEL").trim().toUpperCase() || "SEM CORRESPONSÁVEL";
+
+      // Filtra caso o texto da célula seja o próprio título da coluna
+      if (corresponsavelNome === "CORRESPONSÁVEL" || corresponsavelNome === "CORRESPONSAVEL") continue;
+
       const processo = String(r[4] || "-").trim();
       const tipoEntrada = String(r[3] || "-").trim();
       const uorgExibicao = mapaUorgDescricao[uorgCodigo] || uorgCodigo;
@@ -63,8 +70,8 @@ function obterDadosDashboardEtiquetas() {
         statusTotais[status] = (statusTotais[status] || 0) + qtd;
       }
 
-      // 🌟 Agrupamento por UG
-      if (ugExibicao) {
+      // Agrupamento por UG
+      if (ugExibicao && ugExibicao !== "UG") {
         if (!porUg[ugExibicao]) {
           porUg[ugExibicao] = { ug: ugExibicao, pendentes: 0, comTombador: 0, detalhes: [] };
         }
@@ -86,7 +93,7 @@ function obterDadosDashboardEtiquetas() {
         }
       }
 
-      // 🌟 Agrupamento por CORRESPONSÁVEL
+      // Agrupamento por CORRESPONSÁVEL
       if (!porCorresponsavel[corresponsavelNome]) {
         porCorresponsavel[corresponsavelNome] = { nome: corresponsavelNome, pendentes: 0, comTombador: 0, detalhes: [] };
       }
@@ -114,7 +121,7 @@ function obterDadosDashboardEtiquetas() {
       recentes: recentes, 
       statusTotais: statusTotais, 
       porUg: porUg, 
-      porCorresponsavel: porCorresponsavel // 🌟 Retorna o novo agrupamento
+      porCorresponsavel: porCorresponsavel 
     };
 
   } catch (error) {
