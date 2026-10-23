@@ -99,9 +99,22 @@
     <h6 class="text-secondary mb-3 fw-bold uppercase"><i class="bi bi-pie-chart-fill"></i> Total de Bens por Status</h6>
     <div class="row g-3 mb-4" id="cardsStatusTotais"></div>
 
-    <h6 class="text-secondary mb-2 fw-bold"><i class="bi bi-grid-3x3-gap-fill"></i> Situação por Unidade Gestora (UG)</h6>
+    <!-- PAINÉIS DE SITUAÇÃO (UG E CORRESPONSÁVEL LADO A LADO) -->
+<div class="row g-4 pb-5">
+  <!-- COLUNA 1: SITUAÇÃO POR UG -->
+  <div class="col-12 col-xl-6">
+    <h6 class="text-secondary mb-2 fw-bold"><i class="bi bi-building-fill"></i> Situação por Unidade Gestora (UG)</h6>
     <p class="text-muted small mb-3">Selecione o painel da UG para detalhar pendências e executar ações.</p>
-    <div class="row g-3 pb-5" id="gridUgTiles"></div>
+    <div class="row g-3" id="gridUgTiles"></div>
+  </div>
+
+  <!-- COLUNA 2: SITUAÇÃO POR CORRESPONSÁVEL -->
+  <div class="col-12 col-xl-6">
+    <h6 class="text-secondary mb-2 fw-bold"><i class="bi bi-people-fill"></i> Situação por Corresponsável</h6>
+    <p class="text-muted small mb-3">Selecione o painel do corresponsável para detalhar pendências e executar ações.</p>
+    <div class="row g-3" id="gridCorresponsavelTiles"></div>
+  </div>
+</div>
   </div>
 
   <!-- ABA: INCLUSÃO MANUAL DE ENTRADA -->

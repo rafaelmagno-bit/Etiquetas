@@ -32,38 +32,115 @@
   }
 
   function carregarDashboardEtiquetas() {
-    var gridUg = document.getElementById("gridUgTiles");
-    var tblRecentes = document.getElementById("tblEtiquetasRecentes");
-    var cardsStatus = document.getElementById("cardsStatusTotais");
-    tblRecentes.innerHTML = '<tr><td colspan="8" class="text-center p-4"><div class="spinner-border text-primary spinner-border-sm"></div> Buscando lançamentos...</td></tr>';
-    gridUg.innerHTML = '<div class="col-12 text-center p-3"><div class="spinner-border text-secondary"></div></div>';
-    
-    google.script.run
-      .withSuccessHandler(function(resposta) {
-        if (!resposta || !resposta.sucesso) { alert("Erro ao carregar dados."); return; }
-        window.cacheMundoEtiquetasPorUg = resposta.porUg || {};
-        
-        var htmlRecentes = "";
-        (resposta.recentes || []).forEach(function(item) {
-          htmlRecentes += `<tr><td class="text-center fw-bold text-secondary">${item.sequencial}</td><td>${item.dataRegistro}</td><td><span class="badge bg-light text-dark border">${item.tipo}</span></td><td>${item.processo}</td><td class="text-center"><span class="badge bg-secondary">${item.ug}</span></td><td>${item.uorg}</td><td>${item.info}</td><td class="text-center fw-bold text-primary">${item.quantidade}</td></tr>`;
-        });
-        tblRecentes.innerHTML = htmlRecentes || '<tr><td colspan="8" class="text-center text-warning p-3">Nenhum registro.</td></tr>';
+  var gridUg = document.getElementById("gridUgTiles");
+  var gridCorresponsavel = document.getElementById("gridCorresponsavelTiles");
 
-        var htmlStatus = "";
-        Object.keys(resposta.statusTotais || {}).forEach(function(key) {
-          htmlStatus += `<div class="col-6 col-md-3"><div class="card border-0 border-start border-4 border-primary shadow-sm bg-white p-3 py-2"><small class="text-muted fw-bold text-uppercase" style="font-size:10px;">${key}</small><h4 class="m-0 fw-bold text-dark">${resposta.statusTotais[key].toLocaleString('pt-BR')} <span class="fs-6 text-muted fw-normal" style="font-size:12px;">bens</span></h4></div></div>`;
-        });
-        cardsStatus.innerHTML = htmlStatus;
+  mostrarLoader("Carregando indicadores...");
 
-        var htmlTiles = "";
-        Object.keys(window.cacheMundoEtiquetasPorUg).forEach(function(ugKey) {
-          var itemUg = window.cacheMundoEtiquetasPorUg[ugKey];
-          var corTile = itemUg.pendentes > 0 ? "bg-danger text-white" : (itemUg.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
-          htmlTiles += `<div class="col-12 col-sm-6 col-md-4 col-lg-3"><div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between" onclick="abrirDetalhamentoUg('${ugKey}')"><div class="tile-ug-title">${itemUg.ug}</div><div class="tile-counter"><div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;"><span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${itemUg.pendentes}</strong></div><div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;"><span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${itemUg.comTombador}</strong></div></div></div></div>`;
-        });
-        gridUg.innerHTML = htmlTiles;
-      }).obterDadosDashboardEtiquetas();
-  }
+  google.script.run.withSuccessHandler(function(resposta) {
+    esconderLoader();
+    if (!resposta || !resposta.sucesso) { alert("Erro ao carregar dados."); return; }
+
+    window.cacheMundoEtiquetasPorUg = resposta.porUg || {};
+    window.cacheMundoEtiquetasPorCorresponsavel = resposta.porCorresponsavel || {}; // 🌟 Salva em cache
+
+    // RENDERIZAÇÃO DOS CARDS POR UG
+    var htmlTilesUg = "";
+    Object.keys(window.cacheMundoEtiquetasPorUg).forEach(function(ugKey) {
+      var itemUg = window.cacheMundoEtiquetasPorUg[ugKey];
+      var corTile = itemUg.pendentes > 0 ? "bg-danger text-white" : (itemUg.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
+      
+      htmlTilesUg += `
+        <div class="col-12 col-sm-6">
+          <div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between" style="cursor:pointer;" onclick="abrirDetalhamentoUg('${ugKey}')">
+            <div class="tile-ug-title">${itemUg.ug}</div>
+            <div class="tile-counter">
+              <div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${itemUg.pendentes}</strong>
+              </div>
+              <div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${itemUg.comTombador}</strong>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+    gridUg.innerHTML = htmlTilesUg || '<div class="col-12 text-muted small p-2">Nenhuma UG encontrada.</div>';
+
+    // 🌟 RENDERIZAÇÃO DOS CARDS POR CORRESPONSÁVEL
+    var htmlTilesCorresponsavel = "";
+    Object.keys(window.cacheMundoEtiquetasPorCorresponsavel).forEach(function(respKey) {
+      var itemResp = window.cacheMundoEtiquetasPorCorresponsavel[respKey];
+      var corTile = itemResp.pendentes > 0 ? "bg-danger text-white" : (itemResp.comTombador > 0 ? "bg-warning text-dark" : "bg-success text-white");
+      
+      htmlTilesCorresponsavel += `
+        <div class="col-12 col-sm-6">
+          <div class="card ${corTile} tile-ug shadow-sm p-3 d-flex flex-column justify-content-between" style="cursor:pointer;" onclick="abrirDetalhamentoCorresponsavel('${respKey}')">
+            <div class="tile-ug-title text-truncate" title="${itemResp.nome}">${itemResp.nome}</div>
+            <div class="tile-counter">
+              <div class="d-flex justify-content-between border-bottom pb-1 mb-1" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-exclamation-octagon"></i> Pendentes:</span><strong>${itemResp.pendentes}</strong>
+              </div>
+              <div class="d-flex justify-content-between" style="opacity:0.95; font-size:12px;">
+                <span><i class="bi bi-person-badge"></i> Com Tombador:</span><strong>${itemResp.comTombador}</strong>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+    gridCorresponsavel.innerHTML = htmlTilesCorresponsavel || '<div class="col-12 text-muted small p-2">Nenhum corresponsável encontrado.</div>';
+
+  }).obterDadosDashboardEtiquetas();
+}
+
+// 🌟 FUNÇÃO PARA EXIBIR A MODAL DE DETALHES DO CORRESPONSÁVEL
+function abrirDetalhamentoCorresponsavel(corresponsavelNome) {
+  var dadosResp = window.cacheMundoEtiquetasPorCorresponsavel[corresponsavelNome];
+  if (!dadosResp) return;
+
+  document.getElementById("modalDetalheUgTitulo").innerHTML = `<i class="bi bi-person-fill"></i> Detalhamento — ${dadosResp.nome}`;
+
+  var mapaAgrupado = {};
+  (dadosResp.detalhes || []).forEach(function(det) {
+    var chave = det.sequencial + "_" + det.processo;
+    if (!mapaAgrupado[chave]) {
+      mapaAgrupado[chave] = { ...det };
+    } else {
+      mapaAgrupado[chave].quantidade += det.quantidade;
+    }
+  });
+
+  var listaAgrupada = Object.values(mapaAgrupado);
+  var htmlCorpo = "";
+
+  listaAgrupada.forEach(function(det) {
+    var classeStatus = det.status.toLowerCase() === "pendente" ? "badge bg-danger" : "badge bg-warning text-dark";
+    var btnTombadorDesabilitado = det.status.toLowerCase() === "com tombador" ? "disabled" : "";
+
+    htmlCorpo += `
+      <tr>
+        <td class="text-center fw-bold text-secondary">${det.sequencial}</td>
+        <td>${det.processo}</td>
+        <td class="fw-bold text-secondary">${det.ug} - ${det.uorg}</td>
+        <td>${det.tipo}</td>
+        <td>${det.info}</td>
+        <td class="text-center text-primary fw-bold fs-6">${det.quantidade}</td>
+        <td class="text-center"><span class="${classeStatus}">${det.status}</span></td>
+        <td class="text-center">
+          <div class="btn-group gap-1">
+            <button class="btn btn-outline-danger btn-sm btn-acao-tbl" ${btnTombadorDesabilitado} onclick="abrirSubModalTombador('${det.sequencial}')" title="Destinar a Tombador"><i class="bi bi-person-plus"></i> Destinar</button>
+            <button class="btn btn-outline-primary btn-sm btn-acao-tbl" onclick="gerarRelatorioEntradaPDF('${det.sequencial}')" title="Gerar Comprovante PDF"><i class="bi bi-file-pdf"></i> PDF</button>
+            <button class="btn btn-outline-secondary btn-sm btn-acao-tbl" onclick="gerarEtiquetasPdf('${det.sequencial}')" title="Gerar Etiquetas"><i class="bi bi-qr-code"></i> Etiquetas</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("tblDetalheUgCorpo").innerHTML = htmlCorpo || '<tr><td colspan="8" class="text-center p-4">Sem pendências.</td></tr>';
+  modalPrincipalInstancia = new bootstrap.Modal(document.getElementById('modalDetalheUg'));
+  modalPrincipalInstancia.show();
+}
 
   function abrirDetalhamentoUg(ugNome) {
   var dadosUg = window.cacheMundoEtiquetasPorUg[ugNome];

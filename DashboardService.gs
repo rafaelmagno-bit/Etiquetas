@@ -7,99 +7,63 @@ function obterDadosDashboardEtiquetas() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     
-    // 1. Carrega o mapa de UG para traduzir Código numérico para SIGLA
+    // 1. Carrega o mapa de UG
     const abaUg = ss.getSheetByName("UG");
     const mapaSiglasUg = {};
     if (abaUg) {
       const dadosUg = abaUg.getDataRange().getValues();
       for (let u = 1; u < dadosUg.length; u++) {
         const codUg = String(dadosUg[u][0]).trim().toUpperCase();
-        const siglaUg = String(dadosUg[u][2] || "").trim().toUpperCase(); 
-        if (codUg && siglaUg) {
-          mapaSiglasUg[codUg] = siglaUg;
-        }
+        const siglaUg = String(dadosUg[u][2] || "").trim().toUpperCase();
+        if (codUg && siglaUg) mapaSiglasUg[codUg] = siglaUg;
       }
     }
 
-    // 2. 🌟 NOVO: Carrega o mapa da UORG (Coluna C = Código, Coluna B = Descrição)
+    // 2. Carrega o mapa da UORG
     const abaOrganograma = ss.getSheetByName("ORGANOGRAMA");
     const mapaUorgDescricao = {};
     if (abaOrganograma) {
       const dadosOrg = abaOrganograma.getDataRange().getValues();
       for (let o = 1; o < dadosOrg.length; o++) {
-        const descUorg = String(dadosOrg[o][1] || "").trim();             // Coluna B (Índice 1)
-        const codUorg = String(dadosOrg[o][2] || "").trim().toUpperCase(); // Coluna C (Índice 2)
-        if (codUorg && descUorg) {
-          mapaUorgDescricao[codUorg] = descUorg;
-        }
+        const codUorg = String(dadosOrg[o][2] || "").trim().toUpperCase();
+        const descUorg = String(dadosOrg[o][1] || "").trim();
+        if (codUorg && descUorg) mapaUorgDescricao[codUorg] = descUorg;
       }
     }
 
     const abaEntrada = ss.getSheetByName("ENTRADA");
-    if (!abaEntrada) {
-      return { sucesso: false, message: "Aba 'ENTRADA' não encontrada nesta planilha de etiquetas." };
-    }
+    if (!abaEntrada) return { sucesso: false, message: "Aba ENTRADA não encontrada." };
 
-    const dados = abaEntrada.getDataRange().getValues();
-    if (dados.length <= 2) {
-      return { sucesso: true, recentes: [], statusTotais: {}, porUg: {} };
-    }
-
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const tresDiasAtras = new Date(hoje);
-    tresDiasAtras.setDate(tresDiasAtras.getDate() - 3);
-
+    const dadosEntrada = abaEntrada.getDataRange().getValues();
+    const porUg = {};
+    const porCorresponsavel = {}; // 🌟 NOVO: Objeto para agrupar por Corresponsável
     const recentes = [];
     const statusTotais = {};
-    const porUg = {};
-    
-    // Índice fixado em 32, que corresponde exatamente à Coluna AG (Status)
-    const indiceStatus = 32; 
 
-    for (let i = 2; i < dados.length; i++) {
-      const r = dados[i];
-      if (!r[0]) continue; 
+    const indiceStatus = 32; // Coluna AG
 
-      const seq = String(r[0]).trim();
-      const dataRegRaw = r[1];                       
-      const tipoEntrada = String(r[3] || "-").trim(); 
-      const processo = String(r[5] || "-").trim();
-      const ugCodigo = String(r[6] || "SEM UG").trim().toUpperCase(); 
-      
-      // 🌟 TRADUÇÃO DA UORG: Busca a descrição pelo código ou mantém o código original se não achar
-      const uorgCodigo = String(r[7] || "-").trim();
-      const uorgExibicao = mapaUorgDescricao[uorgCodigo.toUpperCase()] || uorgCodigo;
+    for (let i = 1; i < dadosEntrada.length; i++) {
+      const r = dadosEntrada[i];
+      const seq = String(r[0] || "").trim();
+      if (!seq) continue;
 
-      const infoComplementar = String(r[35] || "-").trim(); 
-      const qtd = parseInt(r[27]) || 0;              
-      
-      // Captura o status real da coluna AG
+      const ugCodigo = String(r[6] || "").trim().toUpperCase();
+      const uorgCodigo = String(r[7] || "").trim().toUpperCase();
+      const corresponsavelNome = String(r[15] || "SEM CORRESPONSÁVEL").trim().toUpperCase() || "SEM CORRESPONSÁVEL"; // 🌟 Coluna P
+      const processo = String(r[4] || "-").trim();
+      const tipoEntrada = String(r[3] || "-").trim();
+      const uorgExibicao = mapaUorgDescricao[uorgCodigo] || uorgCodigo;
+      const infoComplementar = String(r[35] || "-").trim();
+      const qtd = parseInt(r[27]) || 0;
       const status = String(r[indiceStatus] || "Pendente").trim();
-      const ugExibicao = mapaSiglasUg[ugCodigo] || ugCodigo; 
-
-      if (dataRegRaw instanceof Date) {
-        let dataRegLimpa = new Date(dataRegRaw);
-        dataRegLimpa.setHours(0, 0, 0, 0);
-        if (dataRegLimpa >= tresDiasAtras) {
-          recentes.push({
-            sequencial: seq,
-            dataRegistro: Utilities.formatDate(dataRegRaw, Session.getScriptTimeZone(), "dd/MM/yyyy"),
-            tipo: tipoEntrada,
-            processo: processo,
-            ug: ugExibicao, 
-            uorg: uorgExibicao, // 👈 Agora envia a descrição
-            info: infoComplementar,
-            quantidade: qtd
-          });
-        }
-      }
+      const ugExibicao = mapaSiglasUg[ugCodigo] || ugCodigo;
 
       // Acumular total por status
       if (status) {
         statusTotais[status] = (statusTotais[status] || 0) + qtd;
       }
 
+      // 🌟 Agrupamento por UG
       if (ugExibicao) {
         if (!porUg[ugExibicao]) {
           porUg[ugExibicao] = { ug: ugExibicao, pendentes: 0, comTombador: 0, detalhes: [] };
@@ -113,7 +77,7 @@ function obterDadosDashboardEtiquetas() {
           porUg[ugExibicao].detalhes.push({
             sequencial: seq,
             processo: processo,
-            uorg: uorgExibicao, // 👈 Agora envia a descrição no detalhamento da modal
+            uorg: uorgExibicao,
             tipo: tipoEntrada,
             info: infoComplementar,
             quantidade: qtd,
@@ -121,19 +85,38 @@ function obterDadosDashboardEtiquetas() {
           });
         }
       }
+
+      // 🌟 Agrupamento por CORRESPONSÁVEL
+      if (!porCorresponsavel[corresponsavelNome]) {
+        porCorresponsavel[corresponsavelNome] = { nome: corresponsavelNome, pendentes: 0, comTombador: 0, detalhes: [] };
+      }
+      if (status.toLowerCase() === "pendente") {
+        porCorresponsavel[corresponsavelNome].pendentes += qtd;
+      } else if (status.toLowerCase() === "com tombador") {
+        porCorresponsavel[corresponsavelNome].comTombador += qtd;
+      }
+      if (status.toLowerCase() === "pendente" || status.toLowerCase() === "com tombador") {
+        porCorresponsavel[corresponsavelNome].detalhes.push({
+          sequencial: seq,
+          processo: processo,
+          ug: ugExibicao,
+          uorg: uorgExibicao,
+          tipo: tipoEntrada,
+          info: infoComplementar,
+          quantidade: qtd,
+          status: status
+        });
+      }
     }
 
-    Object.keys(porUg).forEach(ugKey => {
-      porUg[ugKey].detalhes.sort((a, b) => {
-        let compUorg = a.uorg.localeCompare(b.uorg);
-        if (compUorg !== 0) return compUorg;
-        if (a.status.toLowerCase() === "pendente" && b.status.toLowerCase() !== "pendente") return -1;
-        if (a.status.toLowerCase() !== "pendente" && b.status.toLowerCase() === "pendente") return 1;
-        return 0;
-      });
-    });
+    return { 
+      sucesso: true, 
+      recentes: recentes, 
+      statusTotais: statusTotais, 
+      porUg: porUg, 
+      porCorresponsavel: porCorresponsavel // 🌟 Retorna o novo agrupamento
+    };
 
-    return { sucesso: true, recentes: recentes, statusTotais: statusTotais, porUg: porUg };
   } catch (error) {
     return { sucesso: false, message: "Erro no servidor local: " + error.toString() };
   }
